@@ -104,6 +104,80 @@ enum VideoScalePreset: String, CaseIterable, Identifiable {
     }
 }
 
+enum VideoPresetOption: String, CaseIterable, Identifiable {
+    case none
+    case ultrafast
+    case superfast
+    case veryfast
+    case faster
+    case fast
+    case medium
+    case slow
+    case slower
+    case veryslow
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        self == .none ? "默认" : rawValue
+    }
+}
+
+enum AudioCodecOption: String, CaseIterable, Identifiable {
+    case auto
+    case aac
+    case mp3
+    case opus
+    case vorbis
+    case flac
+    case alac
+    case pcmS16le
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto:
+            return "自动"
+        case .aac:
+            return "AAC"
+        case .mp3:
+            return "MP3 (LAME)"
+        case .opus:
+            return "Opus"
+        case .vorbis:
+            return "Vorbis"
+        case .flac:
+            return "FLAC"
+        case .alac:
+            return "ALAC"
+        case .pcmS16le:
+            return "PCM S16LE"
+        }
+    }
+
+    var ffmpegCodecName: String? {
+        switch self {
+        case .auto:
+            return nil
+        case .aac:
+            return "aac"
+        case .mp3:
+            return "libmp3lame"
+        case .opus:
+            return "libopus"
+        case .vorbis:
+            return "libvorbis"
+        case .flac:
+            return "flac"
+        case .alac:
+            return "alac"
+        case .pcmS16le:
+            return "pcm_s16le"
+        }
+    }
+}
+
 enum ConversionTaskStatus: String {
     case queued
     case running
@@ -217,14 +291,35 @@ final class ContentViewModel: ObservableObject {
     @Published var videoRateControl: VideoRateControl = .constantQuality
     @Published var videoEncoder: VideoEncoderOption = .auto
     @Published var videoScalePreset: VideoScalePreset = .source
+    @Published var videoPreset: VideoPresetOption = .medium
+    @Published var videoPixelFormat: String = "yuv420p"
+    @Published var videoGOP: String = ""
+    @Published var videoProfile: String = ""
+    @Published var videoLevel: String = ""
+    @Published var videoTune: String = ""
     @Published var videoCRF: Double = 23
     @Published var videoBitrateKbps: String = "2500"
+    @Published var videoMaxBitrateKbps: String = ""
+    @Published var videoBufferSizeKbps: String = ""
     @Published var videoFrameRate: String = ""
+    @Published var enableDeinterlace = false
 
     // Audio advanced settings
+    @Published var audioCodec: AudioCodecOption = .auto
     @Published var audioBitrateKbps: String = "192"
     @Published var audioSampleRate: String = "44100"
     @Published var audioChannels: Int = 2
+    @Published var audioVolumeDB: String = ""
+    @Published var audioVBRQuality: String = ""
+    @Published var enableLoudnorm = false
+
+    // General expert settings
+    @Published var keepMetadata = true
+    @Published var enableFastStart = true
+    @Published var startTime: String = ""
+    @Published var duration: String = ""
+    @Published var threadCount: String = ""
+    @Published var customFFmpegArgs: String = ""
 
     // Queue controls
     @Published var tasks: [ConversionTask] = []
@@ -553,6 +648,21 @@ final class ContentViewModel: ObservableObject {
 
     private func extraFFmpegArguments() -> [String] {
         var args: [String] = []
+        var videoFilters: [String] = []
+        var audioFilters: [String] = []
+
+        if let ss = parsedTimeValue(startTime) {
+            args += ["-ss", ss]
+        }
+        if let t = parsedTimeValue(duration) {
+            args += ["-t", t]
+        }
+        if let threads = parsedPositiveInt(threadCount) {
+            args += ["-threads", "\(threads)"]
+        }
+        if keepMetadata == false {
+            args += ["-map_metadata", "-1"]
+        }
 
         if domain == .video {
             if format != .gif {
@@ -560,6 +670,30 @@ final class ContentViewModel: ObservableObject {
             }
 
             if format != .gif {
+                if videoPreset != .none {
+                    args += ["-preset", videoPreset.rawValue]
+                }
+                if let gop = parsedPositiveInt(videoGOP) {
+                    args += ["-g", "\(gop)"]
+                }
+                if let maxrate = parsedPositiveInt(videoMaxBitrateKbps) {
+                    args += ["-maxrate", "\(maxrate)k"]
+                }
+                if let buf = parsedPositiveInt(videoBufferSizeKbps) {
+                    args += ["-bufsize", "\(buf)k"]
+                }
+                if let profile = nonEmpty(videoProfile) {
+                    args += ["-profile:v", profile]
+                }
+                if let level = nonEmpty(videoLevel) {
+                    args += ["-level:v", level]
+                }
+                if let tune = nonEmpty(videoTune) {
+                    args += ["-tune", tune]
+                }
+                if let pixFmt = nonEmpty(videoPixelFormat) {
+                    args += ["-pix_fmt", pixFmt]
+                }
                 switch videoRateControl {
                 case .constantQuality:
                     args += ["-crf", "\(Int(videoCRF))"]
@@ -575,11 +709,17 @@ final class ContentViewModel: ObservableObject {
             }
 
             if format != .gif, let height = videoScalePreset.height {
-                args += ["-vf", "scale=-2:\(height):flags=lanczos"]
+                videoFilters.append("scale=-2:\(height):flags=lanczos")
+            }
+            if enableDeinterlace {
+                videoFilters.append("yadif")
             }
         }
 
         if format != .gif {
+            if let codec = audioCodec.ffmpegCodecName {
+                args += ["-c:a", codec]
+            }
             if let bitrate = parsedPositiveInt(audioBitrateKbps) {
                 args += ["-b:a", "\(bitrate)k"]
             }
@@ -589,6 +729,30 @@ final class ContentViewModel: ObservableObject {
             if audioChannels > 0 {
                 args += ["-ac", "\(audioChannels)"]
             }
+            if let q = parsedBoundedDouble(audioVBRQuality, min: 0, max: 9) {
+                args += ["-q:a", String(format: "%.1f", q)]
+            }
+            if let vol = parsedDouble(audioVolumeDB), vol != 0 {
+                audioFilters.append("volume=\(String(format: "%.2f", vol))dB")
+            }
+            if enableLoudnorm {
+                audioFilters.append("loudnorm=I=-16:LRA=11:TP=-1.5")
+            }
+        }
+
+        if !videoFilters.isEmpty {
+            args += ["-vf", videoFilters.joined(separator: ",")]
+        }
+        if !audioFilters.isEmpty {
+            args += ["-af", audioFilters.joined(separator: ",")]
+        }
+
+        if enableFastStart, domain == .video, [.mp4, .mov, .m4v].contains(format) {
+            args += ["-movflags", "+faststart"]
+        }
+
+        if let custom = splitCustomArgs(customFFmpegArgs), !custom.isEmpty {
+            args += custom
         }
 
         return args
@@ -630,14 +794,17 @@ final class ContentViewModel: ObservableObject {
         case .highQuality:
             videoRateControl = .constantQuality
             videoCRF = 18
+            videoPreset = .slow
             audioBitrateKbps = "320"
         case .balanced:
             videoRateControl = .constantQuality
             videoCRF = 23
+            videoPreset = .medium
             audioBitrateKbps = "192"
         case .smallSize:
             videoRateControl = .constantQuality
             videoCRF = 30
+            videoPreset = .faster
             audioBitrateKbps = "128"
         }
     }
@@ -651,6 +818,7 @@ final class ContentViewModel: ObservableObject {
 
         if domain == .video {
             segments.append("编码器=\(videoEncoder.displayName)")
+            segments.append("预设=\(videoPreset.displayName)")
             segments.append("分辨率=\(videoScalePreset.displayName)")
             switch videoRateControl {
             case .constantQuality:
@@ -664,6 +832,7 @@ final class ContentViewModel: ObservableObject {
         }
 
         if format != .gif {
+            segments.append("音频编码=\(audioCodec.displayName)")
             segments.append("音频码率=\(audioBitrateKbps)kbps")
             segments.append("采样率=\(audioSampleRate)")
             segments.append("声道=\(audioChannels)")
@@ -682,5 +851,31 @@ final class ContentViewModel: ObservableObject {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let doubleValue = Double(trimmed), doubleValue > 0 else { return nil }
         return doubleValue
+    }
+
+    private func parsedDouble(_ value: String) -> Double? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let doubleValue = Double(trimmed) else { return nil }
+        return doubleValue
+    }
+
+    private func parsedBoundedDouble(_ value: String, min: Double, max: Double) -> Double? {
+        guard let d = parsedDouble(value), d >= min, d <= max else { return nil }
+        return d
+    }
+
+    private func nonEmpty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func parsedTimeValue(_ value: String) -> String? {
+        nonEmpty(value)
+    }
+
+    private func splitCustomArgs(_ raw: String) -> [String]? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
     }
 }

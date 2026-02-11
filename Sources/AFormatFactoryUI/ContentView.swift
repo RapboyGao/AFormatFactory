@@ -244,6 +244,10 @@ public struct ContentView: View {
 
                 Toggle("覆盖同名文件", isOn: $viewModel.overwriteExistingFiles)
                     .toggleStyle(.switch)
+                Toggle("保留元数据", isOn: $viewModel.keepMetadata)
+                    .toggleStyle(.switch)
+                Toggle("FastStart", isOn: $viewModel.enableFastStart)
+                    .toggleStyle(.switch)
 
                 Spacer()
             }
@@ -259,6 +263,17 @@ public struct ContentView: View {
                         .pickerStyle(.menu)
                         .labelsHidden()
                         .frame(width: 145)
+                    }
+
+                    LabeledContent("编码预设") {
+                        Picker("编码预设", selection: $viewModel.videoPreset) {
+                            ForEach(VideoPresetOption.allCases) { preset in
+                                Text(preset.displayName).tag(preset)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(width: 110)
                     }
 
                     LabeledContent("分辨率") {
@@ -310,9 +325,65 @@ public struct ContentView: View {
 
                     Spacer()
                 }
+
+                HStack(spacing: 12) {
+                    LabeledContent("GOP") {
+                        TextField("如 60", text: $viewModel.videoGOP)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 90)
+                    }
+                    LabeledContent("像素格式") {
+                        TextField("yuv420p", text: $viewModel.videoPixelFormat)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 110)
+                    }
+                    LabeledContent("Profile") {
+                        TextField("high/main", text: $viewModel.videoProfile)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    LabeledContent("Level") {
+                        TextField("4.1", text: $viewModel.videoLevel)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 70)
+                    }
+                    LabeledContent("Tune") {
+                        TextField("film/animation", text: $viewModel.videoTune)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 130)
+                    }
+                    Toggle("去隔行", isOn: $viewModel.enableDeinterlace)
+                        .toggleStyle(.switch)
+                    Spacer()
+                }
+
+                HStack(spacing: 12) {
+                    LabeledContent("最大码率(kbps)") {
+                        TextField("选填", text: $viewModel.videoMaxBitrateKbps)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    LabeledContent("缓冲(kbps)") {
+                        TextField("选填", text: $viewModel.videoBufferSizeKbps)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    Spacer()
+                }
             }
 
             HStack(spacing: 12) {
+                LabeledContent("音频编码器") {
+                    Picker("音频编码器", selection: $viewModel.audioCodec) {
+                        ForEach(AudioCodecOption.allCases) { codec in
+                            Text(codec.displayName).tag(codec)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .labelsHidden()
+                    .frame(width: 130)
+                }
+
                 LabeledContent("音频码率(kbps)") {
                     TextField("192", text: $viewModel.audioBitrateKbps)
                         .textFieldStyle(.roundedBorder)
@@ -334,7 +405,49 @@ public struct ContentView: View {
                     .frame(width: 70)
                 }
 
+                LabeledContent("VBR质量") {
+                    TextField("0~9", text: $viewModel.audioVBRQuality)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 70)
+                }
+
+                LabeledContent("音量(dB)") {
+                    TextField("如 -3 / 2.5", text: $viewModel.audioVolumeDB)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 95)
+                }
+
+                Toggle("响度标准化", isOn: $viewModel.enableLoudnorm)
+                    .toggleStyle(.switch)
+
                 Spacer()
+            }
+
+            HStack(spacing: 12) {
+                LabeledContent("开始时间") {
+                    TextField("00:00:05 或 5", text: $viewModel.startTime)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 130)
+                }
+                LabeledContent("时长") {
+                    TextField("00:01:30 或 90", text: $viewModel.duration)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 130)
+                }
+                LabeledContent("线程数") {
+                    TextField("留空=自动", text: $viewModel.threadCount)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 110)
+                }
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("自定义 FFmpeg 参数（会追加到命令末尾，空格分隔）")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.72))
+                TextField("例如: -metadata title=Demo -shortest", text: $viewModel.customFFmpegArgs)
+                    .textFieldStyle(.roundedBorder)
             }
         }
         .padding(.vertical, 2)
