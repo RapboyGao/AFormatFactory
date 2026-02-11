@@ -6,7 +6,7 @@ public struct ContentView: View {
     public init() {}
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 14) {
             Text("AFormatFactory")
                 .font(.largeTitle)
                 .bold()
@@ -18,7 +18,7 @@ public struct ContentView: View {
             }
             .pickerStyle(.segmented)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Button("选择输入文件") {
                     viewModel.pickInputFiles()
                 }
@@ -33,14 +33,29 @@ public struct ContentView: View {
                     }
                 }
                 .pickerStyle(.menu)
-                .frame(width: 160)
+                .frame(width: 170)
 
-                Button(viewModel.isConverting ? "转换中..." : "开始转换") {
+                Button("添加任务") {
+                    viewModel.addTasksFromSelection()
+                }
+
+                Button(viewModel.isProcessingQueue ? "执行中..." : "开始队列") {
                     Task {
-                        await viewModel.startConversion()
+                        await viewModel.startQueuedTasks()
                     }
                 }
-                .disabled(viewModel.isConverting)
+                .disabled(viewModel.isProcessingQueue)
+
+                Button("清理已完成") {
+                    viewModel.clearFinishedTasks()
+                }
+
+                Spacer()
+
+                Stepper(value: $viewModel.maxConcurrentTasks, in: 1...8) {
+                    Text("并发: \(viewModel.maxConcurrentTasks)")
+                        .frame(width: 90, alignment: .trailing)
+                }
             }
 
             GroupBox("高级参数") {
@@ -138,33 +153,55 @@ public struct ContentView: View {
                 .padding(.top, 4)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(viewModel.domain.displayName) 输入文件（\(viewModel.selectedFiles.count)）")
-                    .font(.headline)
-                List(viewModel.selectedFiles, id: \.self) { url in
-                    Text(url.path)
-                        .textSelection(.enabled)
-                        .lineLimit(1)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("任务队列（\(viewModel.tasks.count)）")
+                        .font(.headline)
+
+                    List(selection: $viewModel.selectedTaskID) {
+                        ForEach(viewModel.tasks) { task in
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(color(for: task.status))
+                                    .frame(width: 8, height: 8)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(task.inputURL.lastPathComponent)
+                                        .lineLimit(1)
+                                    Text("→ \(task.outputURL.lastPathComponent) · \(task.format.displayName) · \(task.status.displayName)")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .tag(task.id)
+                        }
+                    }
+                    .frame(minHeight: 190)
                 }
-                .frame(height: 170)
-            }
+                .frame(maxWidth: .infinity)
 
-            VStack(alignment: .leading, spacing: 8) {
-                Text("输出目录")
-                    .font(.headline)
-                Text(viewModel.outputDirectory?.path ?? "未选择")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .background(Color.gray.opacity(0.12))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("任务日志")
+                        .font(.headline)
+
+                    ScrollView {
+                        Text(viewModel.selectedTask?.logs ?? "请在左侧选择任务查看日志")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(8)
+                    }
+                    .frame(minHeight: 190)
+                    .background(Color.black.opacity(0.06))
                     .cornerRadius(8)
-                    .textSelection(.enabled)
+                }
+                .frame(maxWidth: .infinity)
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("日志")
+                Text("应用日志")
                     .font(.headline)
                 ScrollView {
-                    Text(viewModel.logs.isEmpty ? "暂无日志" : viewModel.logs)
+                    Text(viewModel.appLogs.isEmpty ? "暂无日志" : viewModel.appLogs)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                         .padding(8)
@@ -174,11 +211,24 @@ public struct ContentView: View {
                 .cornerRadius(8)
             }
         }
-        .padding(20)
+        .padding(18)
+    }
+
+    private func color(for status: ConversionTaskStatus) -> Color {
+        switch status {
+        case .queued:
+            return .gray
+        case .running:
+            return .orange
+        case .succeeded:
+            return .green
+        case .failed:
+            return .red
+        }
     }
 }
 
 #Preview {
     ContentView()
-        .frame(width: 860, height: 560)
+        .frame(width: 980, height: 720)
 }

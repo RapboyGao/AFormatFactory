@@ -104,18 +104,93 @@ enum VideoScalePreset: String, CaseIterable, Identifiable {
     }
 }
 
+enum ConversionTaskStatus: String {
+    case queued
+    case running
+    case succeeded
+    case failed
+
+    var displayName: String {
+        switch self {
+        case .queued:
+            return "排队中"
+        case .running:
+            return "执行中"
+        case .succeeded:
+            return "成功"
+        case .failed:
+            return "失败"
+        }
+    }
+}
+
+struct ConversionTask: Identifiable {
+    let id: UUID
+    let createdAt: Date
+    let inputURL: URL
+    let outputURL: URL
+    let format: ConversionFormat
+    let domain: ConversionDomain
+    let overwriteExisting: Bool
+    let extraArguments: [String]
+    let optionsSummary: String
+
+    var status: ConversionTaskStatus
+    var startedAt: Date?
+    var finishedAt: Date?
+    var logs: String
+}
+
+private struct TaskExecutionContext {
+    let id: UUID
+    let inputURL: URL
+    let outputURL: URL
+    let format: ConversionFormat
+    let overwriteExisting: Bool
+    let extraArguments: [String]
+}
+
+actor AsyncSemaphore {
+    private var count: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(value: Int) {
+        count = max(1, value)
+    }
+
+    func acquire() async {
+        if count > 0 {
+            count -= 1
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if !waiters.isEmpty {
+            let continuation = waiters.removeFirst()
+            continuation.resume()
+            return
+        }
+        count += 1
+    }
+}
+
 @MainActor
 final class ContentViewModel: ObservableObject {
     @Published var domain: ConversionDomain = .video {
         didSet { ensureFormatMatchesDomain() }
     }
+
     @Published private(set) var selectedVideoFiles: [URL] = []
     @Published private(set) var selectedAudioFiles: [URL] = []
     @Published var outputDirectory: URL?
     @Published var format: ConversionFormat = .mp4
-    @Published var isConverting = false
-    @Published var logs = ""
     @Published private(set) var supportedFormats: Set<ConversionFormat> = Set(ConversionFormat.allCases)
+
     @Published var overwriteExistingFiles = true
     @Published var conversionPreset: ConversionPreset = .balanced {
         didSet { applyPreset() }
@@ -133,6 +208,13 @@ final class ContentViewModel: ObservableObject {
     @Published var audioBitrateKbps: String = "192"
     @Published var audioSampleRate: String = "44100"
     @Published var audioChannels: Int = 2
+
+    // Queue controls
+    @Published var tasks: [ConversionTask] = []
+    @Published var selectedTaskID: UUID?
+    @Published var maxConcurrentTasks: Int = 2
+    @Published var isProcessingQueue = false
+    @Published var appLogs = ""
 
     private let runner = FFmpegRunner()
     private var capabilities: FFmpegCapabilities?
@@ -168,6 +250,11 @@ final class ContentViewModel: ObservableObject {
         return result
     }
 
+    var selectedTask: ConversionTask? {
+        guard let selectedTaskID else { return nil }
+        return tasks.first(where: { $0.id == selectedTaskID })
+    }
+
     func pickInputFiles() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -182,7 +269,7 @@ final class ContentViewModel: ObservableObject {
             case .audio:
                 selectedAudioFiles = panel.urls
             }
-            appendLog("\(domain.displayName)：已选择 \(selectedFiles.count) 个文件。")
+            appendAppLog("\(domain.displayName)：已选择 \(selectedFiles.count) 个文件。")
         }
     }
 
@@ -194,49 +281,167 @@ final class ContentViewModel: ObservableObject {
 
         if panel.runModal() == .OK, let directory = panel.url {
             outputDirectory = directory
-            appendLog("输出目录：\(directory.path)")
+            appendAppLog("输出目录：\(directory.path)")
         }
     }
 
-    func startConversion() async {
+    func addTasksFromSelection() {
         let files = selectedFiles
         guard !files.isEmpty else {
-            appendLog("请先选择输入文件。")
+            appendAppLog("请先选择输入文件。")
             return
         }
 
         guard let outputDirectory else {
-            appendLog("请先选择输出目录。")
+            appendAppLog("请先选择输出目录。")
             return
         }
 
-        isConverting = true
-        defer { isConverting = false }
+        let extraArguments = extraFFmpegArguments()
+        let optionsSummary = currentOptionsSummary()
 
-        for (index, file) in files.enumerated() {
+        let newTasks = files.map { file -> ConversionTask in
             let output = outputURL(for: file, in: outputDirectory)
-            appendLog("[\(index + 1)/\(files.count)] 开始：\(file.lastPathComponent)")
+            let lines = [
+                "任务已创建。",
+                "输入：\(file.path)",
+                "输出：\(output.path)",
+                "格式：\(format.displayName)",
+                "参数：\(optionsSummary)"
+            ]
 
-            do {
-                let extraArguments = extraFFmpegArguments()
-                try await runner.transcode(
-                    input: file,
-                    output: output,
-                    format: format,
-                    overwriteExisting: overwriteExistingFiles,
-                    extraArguments: extraArguments
-                ) { [weak self] message in
-                    Task { @MainActor in
-                        self?.appendLog(message.trimmingCharacters(in: .whitespacesAndNewlines))
-                    }
-                }
-                appendLog("完成：\(output.lastPathComponent)")
-            } catch {
-                appendLog("失败：\(error.localizedDescription)")
-            }
+            return ConversionTask(
+                id: UUID(),
+                createdAt: Date(),
+                inputURL: file,
+                outputURL: output,
+                format: format,
+                domain: domain,
+                overwriteExisting: overwriteExistingFiles,
+                extraArguments: extraArguments,
+                optionsSummary: optionsSummary,
+                status: .queued,
+                startedAt: nil,
+                finishedAt: nil,
+                logs: lines.joined(separator: "\n")
+            )
         }
 
-        appendLog("全部任务结束。")
+        tasks.append(contentsOf: newTasks)
+        if selectedTaskID == nil {
+            selectedTaskID = newTasks.first?.id
+        }
+        appendAppLog("已添加 \(newTasks.count) 个任务到队列。")
+    }
+
+    func startQueuedTasks() async {
+        guard !isProcessingQueue else {
+            appendAppLog("任务队列正在执行中。")
+            return
+        }
+
+        let queuedTaskIDs = tasks.filter { $0.status == .queued }.map(\ .id)
+        guard !queuedTaskIDs.isEmpty else {
+            appendAppLog("没有待执行任务。")
+            return
+        }
+
+        isProcessingQueue = true
+        appendAppLog("开始执行 \(queuedTaskIDs.count) 个任务，并发数：\(maxConcurrentTasks)")
+
+        let semaphore = AsyncSemaphore(value: maxConcurrentTasks)
+        await withTaskGroup(of: Void.self) { group in
+            for id in queuedTaskIDs {
+                group.addTask { [weak self] in
+                    guard let self else { return }
+                    await semaphore.acquire()
+                    await self.runTask(id: id)
+                    await semaphore.release()
+                }
+            }
+            await group.waitForAll()
+        }
+
+        isProcessingQueue = false
+        appendAppLog("队列执行完成。")
+    }
+
+    func clearFinishedTasks() {
+        tasks.removeAll { $0.status == .succeeded || $0.status == .failed }
+        if let selectedTaskID, tasks.contains(where: { $0.id == selectedTaskID }) == false {
+            self.selectedTaskID = tasks.first?.id
+        }
+    }
+
+    private nonisolated func runTask(id: UUID) async {
+        guard let context = await MainActor.run(body: { self.prepareTaskForExecution(id: id) }) else {
+            return
+        }
+
+        do {
+            try await FFmpegRunner().transcode(
+                input: context.inputURL,
+                output: context.outputURL,
+                format: context.format,
+                overwriteExisting: context.overwriteExisting,
+                extraArguments: context.extraArguments
+            ) { [weak self] message in
+                Task { @MainActor in
+                    self?.appendTaskLog(id: context.id, line: message.trimmingCharacters(in: .whitespacesAndNewlines))
+                }
+            }
+
+            await MainActor.run {
+                self.markTaskSucceeded(id: context.id)
+            }
+        } catch {
+            await MainActor.run {
+                self.markTaskFailed(id: context.id, reason: error.localizedDescription)
+            }
+        }
+    }
+
+    private func prepareTaskForExecution(id: UUID) -> TaskExecutionContext? {
+        guard let index = indexOfTask(id: id) else { return nil }
+        guard tasks[index].status == .queued else { return nil }
+
+        tasks[index].status = .running
+        tasks[index].startedAt = Date()
+        appendTaskLog(id: id, line: "开始执行任务...")
+
+        return TaskExecutionContext(
+            id: id,
+            inputURL: tasks[index].inputURL,
+            outputURL: tasks[index].outputURL,
+            format: tasks[index].format,
+            overwriteExisting: tasks[index].overwriteExisting,
+            extraArguments: tasks[index].extraArguments
+        )
+    }
+
+    private func markTaskSucceeded(id: UUID) {
+        guard let index = indexOfTask(id: id) else { return }
+        tasks[index].status = .succeeded
+        tasks[index].finishedAt = Date()
+        appendTaskLog(id: id, line: "任务完成。")
+    }
+
+    private func markTaskFailed(id: UUID, reason: String) {
+        guard let index = indexOfTask(id: id) else { return }
+        tasks[index].status = .failed
+        tasks[index].finishedAt = Date()
+        appendTaskLog(id: id, line: "任务失败：\(reason)")
+    }
+
+    private func appendTaskLog(id: UUID, line: String) {
+        guard !line.isEmpty else { return }
+        guard let index = indexOfTask(id: id) else { return }
+
+        if tasks[index].logs.isEmpty {
+            tasks[index].logs = line
+        } else {
+            tasks[index].logs += "\n\(line)"
+        }
     }
 
     private func ensureFormatMatchesDomain() {
@@ -250,16 +455,16 @@ final class ContentViewModel: ObservableObject {
             let capabilities = try await runner.detectCapabilities()
             let supported = Set(ConversionFormat.allCases.filter { $0.isSupported(by: capabilities) })
             if supported.isEmpty {
-                appendLog("警告：未探测到可用格式，已保留默认列表。")
+                appendAppLog("警告：未探测到可用格式，已保留默认列表。")
                 return
             }
             self.capabilities = capabilities
             supportedFormats = supported
             ensureVideoEncoderIsSupported()
             ensureFormatMatchesDomain()
-            appendLog("已按内置 ffmpeg 能力过滤格式，当前可用 \(supported.count) 项。")
+            appendAppLog("已按内置 ffmpeg 能力过滤格式，当前可用 \(supported.count) 项。")
         } catch {
-            appendLog("读取 ffmpeg 支持格式失败：\(error.localizedDescription)")
+            appendAppLog("读取 ffmpeg 支持格式失败：\(error.localizedDescription)")
         }
     }
 
@@ -287,12 +492,16 @@ final class ContentViewModel: ObservableObject {
         return outputDirectory.appendingPathComponent(filename, isDirectory: false)
     }
 
-    private func appendLog(_ line: String) {
+    private func indexOfTask(id: UUID) -> Int? {
+        tasks.firstIndex(where: { $0.id == id })
+    }
+
+    private func appendAppLog(_ line: String) {
         guard !line.isEmpty else { return }
-        if logs.isEmpty {
-            logs = line
+        if appLogs.isEmpty {
+            appLogs = line
         } else {
-            logs += "\n\(line)"
+            appLogs += "\n\(line)"
         }
     }
 
@@ -385,6 +594,35 @@ final class ContentViewModel: ObservableObject {
             videoCRF = 30
             audioBitrateKbps = "128"
         }
+    }
+
+    private func currentOptionsSummary() -> String {
+        var segments: [String] = [
+            "预设=\(conversionPreset.displayName)",
+            "覆盖=\(overwriteExistingFiles ? "是" : "否")"
+        ]
+
+        if domain == .video {
+            segments.append("编码器=\(videoEncoder.displayName)")
+            segments.append("分辨率=\(videoScalePreset.displayName)")
+            switch videoRateControl {
+            case .constantQuality:
+                segments.append("CRF=\(Int(videoCRF))")
+            case .targetBitrate:
+                segments.append("视频码率=\(videoBitrateKbps)kbps")
+            }
+            if !videoFrameRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                segments.append("FPS=\(videoFrameRate)")
+            }
+        }
+
+        if format != .gif {
+            segments.append("音频码率=\(audioBitrateKbps)kbps")
+            segments.append("采样率=\(audioSampleRate)")
+            segments.append("声道=\(audioChannels)")
+        }
+
+        return segments.joined(separator: " | ")
     }
 
     private func parsedPositiveInt(_ value: String) -> Int? {

@@ -9,6 +9,7 @@ APP_VERSION="${APP_VERSION:-1.0.0}"
 BUILD_NUMBER="${BUILD_NUMBER:-1}"
 CONFIGURATION="${CONFIGURATION:-release}"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+OPEN_AFTER_BUILD="${OPEN_AFTER_BUILD:-1}"
 
 BUILD_DIR="$ROOT_DIR/.build/$CONFIGURATION"
 DIST_DIR="$ROOT_DIR/dist"
@@ -110,4 +111,9 @@ else
 fi
 
 echo "[5/5] Done: $APP_DIR"
-echo "Double-click to run, or execute: open \"$APP_DIR\""
+if [[ "$OPEN_AFTER_BUILD" == "1" ]]; then
+  echo "Opening app..."
+  open "$APP_DIR"
+else
+  echo "Double-click to run, or execute: open \"$APP_DIR\""
+fi
