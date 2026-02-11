@@ -82,25 +82,25 @@ public struct ContentView: View {
 
     @ViewBuilder
     private var detailView: some View {
-        VStack(spacing: 12) {
-            switch selectedSection ?? .videoConvert {
-            case .videoConvert:
-                controlCard
-                    .onAppear { viewModel.domain = .video }
-                addTaskBar
-            case .audioConvert:
-                controlCard
-                    .onAppear { viewModel.domain = .audio }
-                addTaskBar
-            case .tasks:
-                taskWorkspace
-            case .appLog:
-                appLogCard
+        ScrollView {
+            VStack(spacing: 12) {
+                switch selectedSection ?? .videoConvert {
+                case .videoConvert:
+                    controlCard
+                        .onAppear { viewModel.domain = .video }
+                    addTaskBar
+                case .audioConvert:
+                    controlCard
+                        .onAppear { viewModel.domain = .audio }
+                    addTaskBar
+                case .tasks:
+                    taskWorkspace
+                case .appLog:
+                    appLogCard
+                }
             }
-
-            Spacer(minLength: 0)
+            .padding(14)
         }
-        .padding(14)
     }
 
     private var controlCard: some View {
@@ -134,6 +134,7 @@ public struct ContentView: View {
                     }
                 }
                 .pickerStyle(.menu)
+                .labelsHidden()
                 .frame(width: 130)
 
                 if viewModel.outputLocationMode == .specifiedDirectory {
