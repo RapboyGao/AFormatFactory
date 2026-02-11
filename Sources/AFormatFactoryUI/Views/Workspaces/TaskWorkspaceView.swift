@@ -29,6 +29,10 @@ struct TaskWorkspaceView: View {
                         .buttonStyle(MaterialActionButtonStyle())
                         .disabled(viewModel.selectedTaskID == nil || viewModel.isProcessingQueue)
 
+                    Button("终止任务") { viewModel.terminateSelectedTask() }
+                        .buttonStyle(MaterialActionButtonStyle())
+                        .disabled(!viewModel.canTerminateSelectedTask)
+
                     Stepper(value: $viewModel.maxConcurrentTasks, in: 1...viewModel.maxConcurrentTaskLimit) {
                         Text("并发 \(viewModel.maxConcurrentTasks)")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -119,6 +123,8 @@ struct TaskWorkspaceView: View {
             return .green
         case .failed:
             return .red
+        case .cancelled:
+            return .yellow
         }
     }
 
@@ -129,6 +135,7 @@ struct TaskWorkspaceView: View {
             statsChip(title: "运行", count: count(for: .running), icon: "bolt")
             statsChip(title: "成功", count: count(for: .succeeded), icon: "checkmark.circle")
             statsChip(title: "失败", count: count(for: .failed), icon: "xmark.octagon")
+            statsChip(title: "终止", count: count(for: .cancelled), icon: "stop.circle")
             Spacer()
         }
     }

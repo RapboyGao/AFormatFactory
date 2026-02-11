@@ -237,7 +237,7 @@ extension ContentViewModel {
     }
 
     func clearFinishedTasks() {
-        tasks.removeAll { $0.status == .succeeded || $0.status == .failed }
+        tasks.removeAll { $0.status == .succeeded || $0.status == .failed || $0.status == .cancelled }
         if let selectedTaskID, tasks.contains(where: { $0.id == selectedTaskID }) == false {
             self.selectedTaskID = tasks.first?.id
         }
@@ -269,7 +269,11 @@ extension ContentViewModel {
 
             await MainActor.run {
                 self.unregisterRunningProcess(for: context.id)
-                self.markTaskSucceeded(id: context.id)
+                if self.isCancellationRequested(id: context.id) {
+                    self.markTaskCancelled(id: context.id, reason: "任务已终止。")
+                } else {
+                    self.markTaskSucceeded(id: context.id)
+                }
             }
         } catch {
             await MainActor.run {
