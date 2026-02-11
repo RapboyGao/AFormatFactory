@@ -61,77 +61,83 @@ extension ContentViewModel {
 
         if domain == .video {
             if format != .gif {
-                args += selectedVideoEncoderArguments()
-            }
+                if copyVideoStream {
+                    args += ["-c:v", "copy"]
+                } else {
+                    args += selectedVideoEncoderArguments()
 
-            if format != .gif {
-                if videoPreset != .none {
-                    args += ["-preset", videoPreset.rawValue]
-                }
-                if let gop = parsedPositiveInt(videoGOP) {
-                    args += ["-g", "\(gop)"]
-                }
-                if let maxrate = parsedPositiveInt(videoMaxBitrateKbps) {
-                    args += ["-maxrate", "\(maxrate)k"]
-                }
-                if let buf = parsedPositiveInt(videoBufferSizeKbps) {
-                    args += ["-bufsize", "\(buf)k"]
-                }
-                if let profile = nonEmpty(videoProfile) {
-                    args += ["-profile:v", profile]
-                }
-                if let level = nonEmpty(videoLevel) {
-                    args += ["-level:v", level]
-                }
-                if let tune = nonEmpty(videoTune) {
-                    args += ["-tune", tune]
-                }
-                if let pixFmt = nonEmpty(videoPixelFormat) {
-                    args += ["-pix_fmt", pixFmt]
-                }
-                switch videoRateControl {
-                case .constantQuality:
-                    args += ["-crf", "\(Int(videoCRF))"]
-                case .targetBitrate:
-                    if let bitrate = parsedPositiveInt(videoBitrateKbps) {
-                        args += ["-b:v", "\(bitrate)k"]
+                    if videoPreset != .none {
+                        args += ["-preset", videoPreset.rawValue]
+                    }
+                    if let gop = parsedPositiveInt(videoGOP) {
+                        args += ["-g", "\(gop)"]
+                    }
+                    if let maxrate = parsedPositiveInt(videoMaxBitrateKbps) {
+                        args += ["-maxrate", "\(maxrate)k"]
+                    }
+                    if let buf = parsedPositiveInt(videoBufferSizeKbps) {
+                        args += ["-bufsize", "\(buf)k"]
+                    }
+                    if let profile = nonEmpty(videoProfile) {
+                        args += ["-profile:v", profile]
+                    }
+                    if let level = nonEmpty(videoLevel) {
+                        args += ["-level:v", level]
+                    }
+                    if let tune = nonEmpty(videoTune) {
+                        args += ["-tune", tune]
+                    }
+                    if let pixFmt = nonEmpty(videoPixelFormat) {
+                        args += ["-pix_fmt", pixFmt]
+                    }
+                    switch videoRateControl {
+                    case .constantQuality:
+                        args += ["-crf", "\(Int(videoCRF))"]
+                    case .targetBitrate:
+                        if let bitrate = parsedPositiveInt(videoBitrateKbps) {
+                            args += ["-b:v", "\(bitrate)k"]
+                        }
                     }
                 }
             }
 
-            if let fps = parsedPositiveDouble(videoFrameRate) {
+            if !copyVideoStream, let fps = parsedPositiveDouble(videoFrameRate) {
                 args += ["-r", String(format: "%.2f", fps)]
             }
 
-            if format != .gif, let height = videoScalePreset.height {
+            if !copyVideoStream, format != .gif, let height = videoScalePreset.height {
                 videoFilters.append("scale=-2:\(height):flags=lanczos")
             }
-            if enableDeinterlace {
+            if !copyVideoStream, enableDeinterlace {
                 videoFilters.append("yadif")
             }
         }
 
         if format != .gif {
-            if let codec = audioCodec.ffmpegCodecName {
-                args += ["-c:a", codec]
-            }
-            if let bitrate = parsedPositiveInt(audioBitrateKbps) {
-                args += ["-b:a", "\(bitrate)k"]
-            }
-            if let sampleRate = parsedPositiveInt(audioSampleRate) {
-                args += ["-ar", "\(sampleRate)"]
-            }
-            if audioChannels > 0 {
-                args += ["-ac", "\(audioChannels)"]
-            }
-            if let q = parsedBoundedDouble(audioVBRQuality, min: 0, max: 9) {
-                args += ["-q:a", String(format: "%.1f", q)]
-            }
-            if let vol = parsedDouble(audioVolumeDB), vol != 0 {
-                audioFilters.append("volume=\(String(format: "%.2f", vol))dB")
-            }
-            if enableLoudnorm {
-                audioFilters.append("loudnorm=I=-16:LRA=11:TP=-1.5")
+            if copyAudioStream {
+                args += ["-c:a", "copy"]
+            } else {
+                if let codec = audioCodec.ffmpegCodecName {
+                    args += ["-c:a", codec]
+                }
+                if let bitrate = parsedPositiveInt(audioBitrateKbps) {
+                    args += ["-b:a", "\(bitrate)k"]
+                }
+                if let sampleRate = parsedPositiveInt(audioSampleRate) {
+                    args += ["-ar", "\(sampleRate)"]
+                }
+                if audioChannels > 0 {
+                    args += ["-ac", "\(audioChannels)"]
+                }
+                if let q = parsedBoundedDouble(audioVBRQuality, min: 0, max: 9) {
+                    args += ["-q:a", String(format: "%.1f", q)]
+                }
+                if let vol = parsedDouble(audioVolumeDB), vol != 0 {
+                    audioFilters.append("volume=\(String(format: "%.2f", vol))dB")
+                }
+                if enableLoudnorm {
+                    audioFilters.append("loudnorm=I=-16:LRA=11:TP=-1.5")
+                }
             }
         }
 
@@ -181,25 +187,33 @@ extension ContentViewModel {
         ]
 
         if domain == .video {
-            segments.append("编码器=\(videoEncoder.displayName)")
-            segments.append("预设=\(videoPreset.displayName)")
-            segments.append("分辨率=\(videoScalePreset.displayName)")
-            switch videoRateControl {
-            case .constantQuality:
-                segments.append("CRF=\(Int(videoCRF))")
-            case .targetBitrate:
-                segments.append("视频码率=\(videoBitrateKbps)kbps")
-            }
-            if !videoFrameRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                segments.append("FPS=\(videoFrameRate)")
+            if copyVideoStream {
+                segments.append("视频流=Copy")
+            } else {
+                segments.append("编码器=\(videoEncoder.displayName)")
+                segments.append("预设=\(videoPreset.displayName)")
+                segments.append("分辨率=\(videoScalePreset.displayName)")
+                switch videoRateControl {
+                case .constantQuality:
+                    segments.append("CRF=\(Int(videoCRF))")
+                case .targetBitrate:
+                    segments.append("视频码率=\(videoBitrateKbps)kbps")
+                }
+                if !videoFrameRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    segments.append("FPS=\(videoFrameRate)")
+                }
             }
         }
 
         if format != .gif {
-            segments.append("音频编码=\(audioCodec.displayName)")
-            segments.append("音频码率=\(audioBitrateKbps)kbps")
-            segments.append("采样率=\(audioSampleRate)")
-            segments.append("声道=\(audioChannels)")
+            if copyAudioStream {
+                segments.append("音频流=Copy")
+            } else {
+                segments.append("音频编码=\(audioCodec.displayName)")
+                segments.append("音频码率=\(audioBitrateKbps)kbps")
+                segments.append("采样率=\(audioSampleRate)")
+                segments.append("声道=\(audioChannels)")
+            }
         }
 
         return segments.joined(separator: " | ")

@@ -256,6 +256,7 @@ final class ContentViewModel: ObservableObject {
     }
 
     // Video advanced settings
+    @Published var copyVideoStream = false
     @Published var videoRateControl: VideoRateControl = .constantQuality
     @Published var videoEncoder: VideoEncoderOption = .auto
     @Published var videoScalePreset: VideoScalePreset = .source
@@ -273,6 +274,7 @@ final class ContentViewModel: ObservableObject {
     @Published var enableDeinterlace = false
 
     // Audio advanced settings
+    @Published var copyAudioStream = false
     @Published var audioCodec: AudioCodecOption = .auto
     @Published var audioBitrateKbps: String = "192"
     @Published var audioSampleRate: String = "44100"
