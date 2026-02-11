@@ -16,6 +16,10 @@ extension ContentViewModel {
     }
 
     func syncPreviewToParameters() {
+        guard !isSyncingPreviewState else { return }
+        isSyncingPreviewState = true
+        defer { isSyncingPreviewState = false }
+
         if let size = previewVideoSize, size.width > 0, size.height > 0 {
             let rect = previewCropRect.clamped()
             let cropW = max(1, Int((rect.width * size.width).rounded()))
@@ -52,6 +56,10 @@ extension ContentViewModel {
     }
 
     func applyParametersToPreview() {
+        guard !isSyncingPreviewState else { return }
+        isSyncingPreviewState = true
+        defer { isSyncingPreviewState = false }
+
         previewTransformState.rotate = videoRotate
         previewTransformState.flipHorizontal = videoFlipHorizontal
         previewTransformState.flipVertical = videoFlipVertical

@@ -358,6 +358,7 @@ public final class ContentViewModel: ObservableObject {
     var capabilities: FFmpegCapabilities?
     var previewUndoStack: [PreviewSnapshot] = []
     var previewRedoStack: [PreviewSnapshot] = []
+    var isSyncingPreviewState = false
 
     public init() {
         applyPreset()

@@ -51,8 +51,6 @@ public struct PreviewEditorWindowView: View {
         .onChange(of: viewModel.previewTransformState) { _, _ in viewModel.syncPreviewToParameters() }
         .onChange(of: viewModel.previewTimeRangeStart) { _, _ in viewModel.syncPreviewToParameters() }
         .onChange(of: viewModel.previewTimeRangeEnd) { _, _ in viewModel.syncPreviewToParameters() }
-        .onChange(of: viewModel.startTime) { _, _ in viewModel.applyParametersToPreview() }
-        .onChange(of: viewModel.duration) { _, _ in viewModel.applyParametersToPreview() }
         .onChange(of: previewSession.naturalVideoSize) { _, size in
             viewModel.previewVideoSize = size
             viewModel.applyParametersToPreview()

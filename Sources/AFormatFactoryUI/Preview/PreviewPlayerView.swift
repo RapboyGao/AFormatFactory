@@ -18,8 +18,6 @@ struct PreviewPlayerView: View {
 
             if url != nil {
                 VideoPlayer(player: session.player)
-                    .scaleEffect(x: transform.flipHorizontal ? -1 : 1, y: transform.flipVertical ? -1 : 1)
-                    .rotationEffect(rotationAngle)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay {
                         if showCropOverlay {
@@ -51,15 +49,6 @@ struct PreviewPlayerView: View {
             }
         }
         .frame(minHeight: 260)
-    }
-
-    private var rotationAngle: Angle {
-        switch transform.rotate {
-        case .none: return .degrees(0)
-        case .clockwise90: return .degrees(90)
-        case .counterClockwise90: return .degrees(-90)
-        case .rotate180: return .degrees(180)
-        }
     }
 }
 
