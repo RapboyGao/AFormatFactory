@@ -18,6 +18,9 @@ extension ContentViewModel {
                 selectedAudioFiles = panel.urls
             }
             appendAppLog("\(domain.displayName)：已选择 \(selectedFiles.count) 个文件。")
+            if let first = selectedFiles.first {
+                setPreviewTarget(first)
+            }
         }
     }
 
@@ -39,6 +42,10 @@ extension ContentViewModel {
             selectedVideoFiles.removeAll { $0 == file }
         case .audio:
             selectedAudioFiles.removeAll { $0 == file }
+        }
+        if previewTargetFile == file {
+            previewTargetFile = nil
+            refreshPreviewTargetIfNeeded()
         }
         appendAppLog("已移除输入文件：\(file.lastPathComponent)")
     }

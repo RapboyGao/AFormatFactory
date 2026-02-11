@@ -144,6 +144,7 @@ extension ContentViewModel {
 
     @discardableResult
     func addTasksFromSelection() async -> Int {
+        syncPreviewToParameters()
         let files = selectedFiles
         guard !files.isEmpty else {
             appendAppLog("请先选择输入文件。")

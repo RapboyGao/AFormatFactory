@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "AFormatFactory",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .library(name: "AFormatFactoryUI", targets: ["AFormatFactoryUI"]),

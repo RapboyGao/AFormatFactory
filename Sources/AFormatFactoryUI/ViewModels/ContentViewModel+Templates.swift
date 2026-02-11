@@ -2,6 +2,14 @@ import AppKit
 import Foundation
 
 private struct ParameterTemplate: Codable {
+    struct PreviewPayload: Codable {
+        let cropRect: NormalizedCropRect
+        let transform: PreviewTransformState
+        let timeRangeStart: Double
+        let timeRangeEnd: Double?
+        let zoom: Double
+    }
+
     let conversionPreset: ConversionPreset
 
     let copyVideoStream: Bool
@@ -47,6 +55,8 @@ private struct ParameterTemplate: Codable {
     let duration: String
     let threadCount: String
     let customFFmpegArgs: String
+    let preview: PreviewPayload?
+    let filterGraph: FilterGraph?
 }
 
 extension ContentViewModel {
@@ -132,7 +142,15 @@ extension ContentViewModel {
             startTime: startTime,
             duration: duration,
             threadCount: threadCount,
-            customFFmpegArgs: customFFmpegArgs
+            customFFmpegArgs: customFFmpegArgs,
+            preview: ParameterTemplate.PreviewPayload(
+                cropRect: previewCropRect,
+                transform: previewTransformState,
+                timeRangeStart: previewTimeRangeStart,
+                timeRangeEnd: previewTimeRangeEnd,
+                zoom: previewZoom
+            ),
+            filterGraph: filterGraph
         )
     }
 
@@ -182,6 +200,22 @@ extension ContentViewModel {
         duration = template.duration
         threadCount = template.threadCount
         customFFmpegArgs = template.customFFmpegArgs
+
+        if let preview = template.preview {
+            previewCropRect = preview.cropRect
+            previewTransformState = preview.transform
+            previewTimeRangeStart = preview.timeRangeStart
+            previewTimeRangeEnd = preview.timeRangeEnd
+            previewZoom = preview.zoom
+        } else {
+            applyParametersToPreview()
+        }
+
+        if let graph = template.filterGraph {
+            filterGraph = graph
+        } else {
+            filterGraph = .empty
+        }
 
         if !availableVideoEncoders.contains(videoEncoder) {
             videoEncoder = .auto

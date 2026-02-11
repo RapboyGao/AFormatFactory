@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 enum VideoRateControl: String, CaseIterable, Identifiable, Codable {
     case constantQuality
@@ -262,7 +263,13 @@ final class ContentViewModel: ObservableObject {
     static let defaultConcurrentTaskCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
 
     @Published var domain: ConversionDomain = .video {
-        didSet { ensureFormatMatchesDomain() }
+        didSet {
+            ensureFormatMatchesDomain()
+            if let previewTargetFile, selectedFiles.contains(previewTargetFile) == false {
+                self.previewTargetFile = nil
+            }
+            refreshPreviewTargetIfNeeded()
+        }
     }
 
     @Published var selectedVideoFiles: [URL] = []
@@ -324,6 +331,22 @@ final class ContentViewModel: ObservableObject {
     @Published var threadCount: String = ""
     @Published var customFFmpegArgs: String = ""
 
+    // Preview/editor state
+    @Published var previewTargetFile: URL?
+    @Published var previewTimeRangeStart: Double = 0
+    @Published var previewTimeRangeEnd: Double?
+    @Published var previewPlayheadSeconds: Double = 0
+    @Published var previewZoom: Double = 1
+    @Published var isPreviewPlaying = false
+    @Published var editorMode: PreviewEditorMode = .crop
+    @Published var previewAspectPreset: PreviewAspectPreset = .free
+    @Published var previewCropRect: NormalizedCropRect = .full
+    @Published var previewTransformState: PreviewTransformState = .identity
+    @Published var filterGraph: FilterGraph = .empty
+    @Published var previewVideoSize: CGSize?
+    @Published var previewDurationSeconds: Double = 0
+    @Published var showCopyDisabledHint = false
+
     // Queue controls
     @Published var tasks: [ConversionTask] = []
     @Published var selectedTaskID: UUID?
@@ -333,6 +356,8 @@ final class ContentViewModel: ObservableObject {
 
     let runner = FFmpegRunner()
     var capabilities: FFmpegCapabilities?
+    var previewUndoStack: [PreviewSnapshot] = []
+    var previewRedoStack: [PreviewSnapshot] = []
 
     init() {
         applyPreset()

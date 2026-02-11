@@ -42,9 +42,8 @@ extension ContentViewModel {
     }
 
     func extraFFmpegArguments() -> [String] {
+        enforceCopyCompatibility()
         var args: [String] = []
-        var videoFilters: [String] = []
-        var audioFilters: [String] = []
 
         if let audioTrack = parsedNonNegativeInt(selectedAudioTrackIndex) {
             if domain == .video {
@@ -65,6 +64,10 @@ extension ContentViewModel {
         }
         if keepMetadata == false {
             args += ["-map_metadata", "-1"]
+        }
+
+        if !copyVideoStream, let fps = parsedPositiveDouble(videoFrameRate) {
+            args += ["-r", String(format: "%.2f", fps)]
         }
 
         if domain == .video {
@@ -109,42 +112,6 @@ extension ContentViewModel {
                 }
             }
 
-            if !copyVideoStream, let fps = parsedPositiveDouble(videoFrameRate) {
-                args += ["-r", String(format: "%.2f", fps)]
-            }
-
-            if !copyVideoStream, format != .gif, let height = videoScalePreset.height {
-                videoFilters.append("scale=-2:\(height):flags=lanczos")
-            }
-            if !copyVideoStream, enableDeinterlace {
-                videoFilters.append("yadif")
-            }
-            if !copyVideoStream {
-                switch videoRotate {
-                case .none:
-                    break
-                case .clockwise90:
-                    videoFilters.append("transpose=1")
-                case .counterClockwise90:
-                    videoFilters.append("transpose=2")
-                case .rotate180:
-                    videoFilters.append("transpose=2,transpose=2")
-                }
-                if videoFlipHorizontal {
-                    videoFilters.append("hflip")
-                }
-                if videoFlipVertical {
-                    videoFilters.append("vflip")
-                }
-                if
-                    let cropW = parsedPositiveInt(videoCropWidth),
-                    let cropH = parsedPositiveInt(videoCropHeight)
-                {
-                    let cropX = parsedNonNegativeInt(videoCropX) ?? 0
-                    let cropY = parsedNonNegativeInt(videoCropY) ?? 0
-                    videoFilters.append("crop=\(cropW):\(cropH):\(cropX):\(cropY)")
-                }
-            }
         }
 
         if format != .gif {
@@ -166,25 +133,51 @@ extension ContentViewModel {
                 if let q = parsedBoundedDouble(audioVBRQuality, min: 0, max: 9) {
                     args += ["-q:a", String(format: "%.1f", q)]
                 }
-                if let vol = parsedDouble(audioVolumeDB), vol != 0 {
-                    audioFilters.append("volume=\(String(format: "%.2f", vol))dB")
-                }
-                if enableLoudnorm {
-                    let i = parsedBoundedDouble(loudnormIntegratedTarget, min: -70, max: -5) ?? -16
-                    let lra = parsedBoundedDouble(loudnormLraTarget, min: 1, max: 20) ?? 11
-                    let tp = parsedBoundedDouble(loudnormTruePeakTarget, min: -9, max: 0) ?? -1.5
-                    audioFilters.append(
-                        "loudnorm=I=\(String(format: "%.1f", i)):LRA=\(String(format: "%.1f", lra)):TP=\(String(format: "%.1f", tp))"
-                    )
-                }
             }
         }
 
-        if !videoFilters.isEmpty {
-            args += ["-vf", videoFilters.joined(separator: ",")]
+        var effectiveVideoNodes = filterGraph.videoNodes
+        if previewCropRect == .full,
+           let cropW = parsedPositiveInt(videoCropWidth),
+           let cropH = parsedPositiveInt(videoCropHeight) {
+            let cropX = parsedNonNegativeInt(videoCropX) ?? 0
+            let cropY = parsedNonNegativeInt(videoCropY) ?? 0
+            effectiveVideoNodes.append(
+                FilterNode(
+                    kind: .crop,
+                    params: ["w": "\(cropW)", "h": "\(cropH)", "x": "\(cropX)", "y": "\(cropY)"],
+                    order: effectiveVideoNodes.count
+                )
+            )
         }
-        if !audioFilters.isEmpty {
-            args += ["-af", audioFilters.joined(separator: ",")]
+
+        let loudnormTuple: (i: Double, lra: Double, tp: Double)?
+        if enableLoudnorm, !copyAudioStream {
+            loudnormTuple = (
+                parsedBoundedDouble(loudnormIntegratedTarget, min: -70, max: -5) ?? -16,
+                parsedBoundedDouble(loudnormLraTarget, min: 1, max: 20) ?? 11,
+                parsedBoundedDouble(loudnormTruePeakTarget, min: -9, max: 0) ?? -1.5
+            )
+        } else {
+            loudnormTuple = nil
+        }
+
+        let filterResult = FFmpegFilterGraphBuilder.build(
+            cropRect: previewCropRect,
+            transform: previewTransformState,
+            videoScalePreset: videoScalePreset,
+            enableDeinterlace: enableDeinterlace && !copyVideoStream,
+            videoFiltersFromNodes: effectiveVideoNodes,
+            audioFiltersFromNodes: filterGraph.audioNodes,
+            loudnormTuple: loudnormTuple,
+            audioVolumeDB: copyAudioStream ? nil : parsedDouble(audioVolumeDB)
+        )
+
+        if let video = filterResult.video, !video.isEmpty, !copyVideoStream {
+            args += ["-vf", video]
+        }
+        if let audio = filterResult.audio, !audio.isEmpty, !copyAudioStream {
+            args += ["-af", audio]
         }
 
         if enableFastStart, domain == .video, [.mp4, .mov, .m4v].contains(format) {
