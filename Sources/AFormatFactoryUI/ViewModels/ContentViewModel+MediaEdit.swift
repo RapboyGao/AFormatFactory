@@ -90,6 +90,31 @@ extension ContentViewModel {
         mediaEditSubtitleURL = nil
     }
 
+    func addMediaEditChapter() {
+        let index = mediaEditChapters.count + 1
+        let suggestedStart: String
+        if let last = mediaEditChapters.last {
+            suggestedStart = last.endTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "0" : last.endTime
+        } else {
+            suggestedStart = "0"
+        }
+        mediaEditChapters.append(
+            MediaEditChapter(
+                startTime: suggestedStart,
+                endTime: "60",
+                title: "Chapter \(index)"
+            )
+        )
+    }
+
+    func removeMediaEditChapter(_ chapterID: UUID) {
+        mediaEditChapters.removeAll { $0.id == chapterID }
+    }
+
+    func clearMediaEditChapters() {
+        mediaEditChapters.removeAll()
+    }
+
     func runMediaEdit() async {
         guard !mediaEditIsProcessing else { return }
         guard let input = mediaEditInputVideoURL else {
@@ -112,10 +137,29 @@ extension ContentViewModel {
         if let copyright = nonEmptyValue(mediaEditMetadataCopyright) { metadata["copyright"] = copyright }
         if let language = nonEmptyValue(mediaEditMetadataLanguage) { metadata["language"] = language }
 
+        var temporaryChapterMetadataURL: URL?
+        let chapters = normalizedMediaEditChapters()
+        if !chapters.isEmpty {
+            do {
+                temporaryChapterMetadataURL = try makeChapterMetadataFile(chapters: chapters)
+            } catch {
+                appendMediaEditLog("章节写入失败：\(error.localizedDescription)")
+                appendAppLog("章节写入失败：\(error.localizedDescription)")
+                return
+            }
+        }
+
+        defer {
+            if let temporaryChapterMetadataURL {
+                try? FileManager.default.removeItem(at: temporaryChapterMetadataURL)
+            }
+        }
+
         let args = mediaEditArguments(
             inputVideo: input,
             additionalAudio: mediaEditAdditionalAudioURL,
             subtitle: mediaEditSubtitleURL,
+            chapterMetadataInput: temporaryChapterMetadataURL,
             output: outputURL,
             overwrite: mediaEditOverwriteExisting,
             metadata: metadata,
@@ -146,6 +190,7 @@ extension ContentViewModel {
         inputVideo: URL,
         additionalAudio: URL?,
         subtitle: URL?,
+        chapterMetadataInput: URL?,
         output: URL,
         overwrite: Bool,
         metadata: [String: String],
@@ -159,6 +204,9 @@ extension ContentViewModel {
         if let subtitle {
             args += ["-i", subtitle.path]
         }
+        if let chapterMetadataInput {
+            args += ["-f", "ffmetadata", "-i", chapterMetadataInput.path]
+        }
 
         args += ["-map", "0:v:0?"]
         args += ["-map", "0:a?"]
@@ -171,6 +219,10 @@ extension ContentViewModel {
         }
         if subtitle != nil {
             args += ["-map", "\(nextInputIndex):s?"]
+            nextInputIndex += 1
+        }
+        if chapterMetadataInput != nil {
+            args += ["-map_chapters", "\(nextInputIndex)"]
         }
 
         args += ["-c:v", "copy", "-c:a", "copy"]
@@ -198,5 +250,87 @@ extension ContentViewModel {
     private func nonEmptyValue(_ value: String) -> String? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func normalizedMediaEditChapters() -> [(startMS: Int, endMS: Int, title: String)] {
+        var result: [(startMS: Int, endMS: Int, title: String)] = []
+        for (index, chapter) in mediaEditChapters.enumerated() {
+            guard
+                let startSeconds = parseMediaEditTimeSeconds(chapter.startTime),
+                let endSeconds = parseMediaEditTimeSeconds(chapter.endTime)
+            else {
+                appendMediaEditLog("跳过第 \(index + 1) 个章节：时间格式无效。")
+                continue
+            }
+
+            let startMS = Int((startSeconds * 1000).rounded())
+            let endMS = Int((endSeconds * 1000).rounded())
+            guard endMS > startMS else {
+                appendMediaEditLog("跳过第 \(index + 1) 个章节：结束时间必须大于开始时间。")
+                continue
+            }
+
+            let title = nonEmptyValue(chapter.title) ?? "Chapter \(index + 1)"
+            result.append((startMS: startMS, endMS: endMS, title: title))
+        }
+        return result.sorted(by: { $0.startMS < $1.startMS })
+    }
+
+    private func makeChapterMetadataFile(chapters: [(startMS: Int, endMS: Int, title: String)]) throws -> URL {
+        let fileName = "aformatfactory-chapters-\(UUID().uuidString).ffmeta"
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName, isDirectory: false)
+
+        var lines: [String] = [";FFMETADATA1"]
+        for chapter in chapters {
+            lines += [
+                "[CHAPTER]",
+                "TIMEBASE=1/1000",
+                "START=\(chapter.startMS)",
+                "END=\(chapter.endMS)",
+                "title=\(escapeFFMetadataValue(chapter.title))"
+            ]
+        }
+
+        let body = lines.joined(separator: "\n") + "\n"
+        try body.write(to: fileURL, atomically: true, encoding: .utf8)
+        return fileURL
+    }
+
+    private func escapeFFMetadataValue(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "=", with: "\\=")
+            .replacingOccurrences(of: ";", with: "\\;")
+            .replacingOccurrences(of: "#", with: "\\#")
+            .replacingOccurrences(of: "\n", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func parseMediaEditTimeSeconds(_ raw: String) -> Double? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let direct = Double(trimmed), direct >= 0 {
+            return direct
+        }
+
+        let segments = trimmed.split(separator: ":")
+        guard !segments.isEmpty, segments.count <= 3 else { return nil }
+        var values: [Double] = []
+        for segment in segments {
+            guard let number = Double(segment), number >= 0 else { return nil }
+            values.append(number)
+        }
+
+        switch values.count {
+        case 1:
+            return values[0]
+        case 2:
+            return values[0] * 60 + values[1]
+        case 3:
+            return values[0] * 3600 + values[1] * 60 + values[2]
+        default:
+            return nil
+        }
     }
 }

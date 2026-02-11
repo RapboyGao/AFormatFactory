@@ -281,6 +281,13 @@ enum MediaEditOutputLocationMode: String, CaseIterable, Identifiable {
     }
 }
 
+struct MediaEditChapter: Identifiable, Codable, Hashable {
+    var id: UUID = UUID()
+    var startTime: String
+    var endTime: String
+    var title: String
+}
+
 struct ConversionTask: Identifiable {
     let id: UUID
     let createdAt: Date
@@ -390,6 +397,7 @@ public final class ContentViewModel: ObservableObject {
     @Published var mediaEditMetadataGenre: String = ""
     @Published var mediaEditMetadataCopyright: String = ""
     @Published var mediaEditMetadataLanguage: String = ""
+    @Published var mediaEditChapters: [MediaEditChapter] = []
     @Published var mediaEditIsProcessing = false
     @Published var mediaEditLogs: String = ""
 

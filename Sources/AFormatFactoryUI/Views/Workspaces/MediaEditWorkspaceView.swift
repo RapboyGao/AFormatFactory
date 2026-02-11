@@ -10,6 +10,7 @@ struct MediaEditWorkspaceView: View {
             outputSection
             streamSection
             metadataSection
+            chapterSection
             actionSection
             logSection
         }
@@ -170,6 +171,59 @@ struct MediaEditWorkspaceView: View {
             .buttonStyle(MaterialActionButtonStyle())
             .disabled(!viewModel.canRunMediaEdit)
         }
+    }
+
+    private var chapterSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Chapters")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.84))
+                Spacer()
+                Button("添加章节") { viewModel.addMediaEditChapter() }
+                    .buttonStyle(MaterialActionButtonStyle())
+                Button("清空章节") { viewModel.clearMediaEditChapters() }
+                    .buttonStyle(MaterialActionButtonStyle())
+                    .disabled(viewModel.mediaEditChapters.isEmpty)
+            }
+
+            Text("时间支持 `秒` 或 `HH:MM:SS(.mmm)`，例如 `75` 或 `00:01:15.500`。")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.7))
+
+            if viewModel.mediaEditChapters.isEmpty {
+                Text("未添加章节。")
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.64))
+                    .padding(.vertical, 6)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach($viewModel.mediaEditChapters) { $chapter in
+                        HStack(spacing: 8) {
+                            TextField("开始", text: $chapter.startTime)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 120)
+
+                            TextField("结束", text: $chapter.endTime)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 120)
+
+                            TextField("章节标题", text: $chapter.title)
+                                .textFieldStyle(.roundedBorder)
+
+                            Button {
+                                viewModel.removeMediaEditChapter(chapter.id)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .foregroundStyle(.white.opacity(0.84))
+                            }
+                            .buttonStyle(MaterialActionButtonStyle())
+                        }
+                    }
+                }
+            }
+        }
+        .cardStyle()
     }
 
     private var logSection: some View {
