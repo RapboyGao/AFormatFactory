@@ -5,22 +5,22 @@ struct ParameterEditorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("高级参数")
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+            HStack {
+                Text("高级参数")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+
+                Picker("参数预设", selection: $viewModel.conversionPreset) {
+                    ForEach(ConversionPreset.allCases) { preset in
+                        Text(preset.displayName).tag(preset)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(width: 150)
+            }
 
             sectionTitle("基础")
             HStack(spacing: 12) {
-                parameterField("参数预设", width: 150) {
-                    Picker("参数预设", selection: $viewModel.conversionPreset) {
-                        ForEach(ConversionPreset.allCases) { preset in
-                            Text(preset.displayName).tag(preset)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: 150)
-                }
-
                 Toggle("覆盖同名文件", isOn: $viewModel.overwriteExistingFiles)
                     .toggleStyle(MaterialToggleStyle())
                 Toggle("保留元数据", isOn: $viewModel.keepMetadata)
@@ -38,8 +38,10 @@ struct ParameterEditorView: View {
                 HStack(spacing: 0) {
                     HStack(alignment: .top, spacing: 12) {
                         parameterField("视频编码器", width: 100) {
-                            Picker("视频编码器", selection: $viewModel.videoEncoder) {
-                                ForEach(viewModel.availableVideoEncoders) { encoder in
+                            Picker("视频编码器", selection: $viewModel.videoEncoder)
+                            {
+                                ForEach(viewModel.availableVideoEncoders) {
+                                    encoder in
                                     Text(encoder.displayName).tag(encoder)
                                 }
                             }
@@ -58,7 +60,10 @@ struct ParameterEditorView: View {
                         }
 
                         parameterField("分辨率", width: 100) {
-                            Picker("分辨率", selection: $viewModel.videoScalePreset) {
+                            Picker(
+                                "分辨率",
+                                selection: $viewModel.videoScalePreset
+                            ) {
                                 ForEach(VideoScalePreset.allCases) { scale in
                                     Text(scale.displayName).tag(scale)
                                 }
@@ -73,8 +78,10 @@ struct ParameterEditorView: View {
 
                 sectionTitle("视频码控")
                 HStack(spacing: 0) {
-                    VideoRateControlSegmentedControl(selection: $viewModel.videoRateControl)
-                        .frame(width: 420, alignment: .leading)
+                    VideoRateControlSegmentedControl(
+                        selection: $viewModel.videoRateControl
+                    )
+                    .frame(width: 420, alignment: .leading)
                     Spacer(minLength: 0)
                 }
 
@@ -82,10 +89,20 @@ struct ParameterEditorView: View {
                     if viewModel.videoRateControl == .constantQuality {
                         parameterField("CRF", width: 300) {
                             HStack(spacing: 8) {
-                                Slider(value: $viewModel.videoCRF, in: 16...35, step: 1)
+                                Slider(
+                                    value: $viewModel.videoCRF,
+                                    in: 16...35,
+                                    step: 1
+                                )
                                 Text("\(Int(viewModel.videoCRF))")
                                     .frame(width: 26, alignment: .trailing)
-                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .font(
+                                        .system(
+                                            size: 13,
+                                            weight: .bold,
+                                            design: .monospaced
+                                        )
+                                    )
                             }
                         }
                     } else {
@@ -182,7 +199,13 @@ struct ParameterEditorView: View {
                 parameterField("声道", width: 70) {
                     Stepper(value: $viewModel.audioChannels, in: 1...8) {
                         Text("\(viewModel.audioChannels)")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .font(
+                                .system(
+                                    size: 13,
+                                    weight: .bold,
+                                    design: .monospaced
+                                )
+                            )
                             .frame(width: 22, alignment: .trailing)
                     }
                     .frame(width: 70)
@@ -235,8 +258,11 @@ struct ParameterEditorView: View {
                 Text("自定义 FFmpeg 参数（会追加到命令末尾，空格分隔）")
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.72))
-                TextField("例如: -metadata title=Demo -shortest", text: $viewModel.customFFmpegArgs)
-                    .textFieldStyle(.roundedBorder)
+                TextField(
+                    "例如: -metadata title=Demo -shortest",
+                    text: $viewModel.customFFmpegArgs
+                )
+                .textFieldStyle(.roundedBorder)
             }
         }
         .padding(.vertical, 2)
@@ -249,7 +275,11 @@ struct ParameterEditorView: View {
             .textCase(.uppercase)
     }
 
-    private func parameterField<Content: View>(_ title: String, width: CGFloat, @ViewBuilder content: () -> Content) -> some View {
+    private func parameterField<Content: View>(
+        _ title: String,
+        width: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))

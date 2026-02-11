@@ -1,0 +1,313 @@
+import Foundation
+
+enum VideoRateControl: String, CaseIterable, Identifiable {
+    case constantQuality
+    case targetBitrate
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .constantQuality:
+            return "恒定质量 (CRF)"
+        case .targetBitrate:
+            return "目标码率"
+        }
+    }
+}
+
+enum ConversionPreset: String, CaseIterable, Identifiable {
+    case highQuality
+    case balanced
+    case smallSize
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .highQuality:
+            return "高质量"
+        case .balanced:
+            return "均衡"
+        case .smallSize:
+            return "小体积"
+        }
+    }
+}
+
+enum VideoEncoderOption: String, CaseIterable, Identifiable {
+    case auto
+    case h264
+    case h265
+    case av1
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto:
+            return "自动"
+        case .h264:
+            return "H.264"
+        case .h265:
+            return "H.265"
+        case .av1:
+            return "AV1"
+        }
+    }
+}
+
+enum VideoScalePreset: String, CaseIterable, Identifiable {
+    case source
+    case p2160
+    case p1440
+    case p1080
+    case p720
+    case p480
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .source:
+            return "保持原始"
+        case .p2160:
+            return "4K (2160p)"
+        case .p1440:
+            return "2K (1440p)"
+        case .p1080:
+            return "1080p"
+        case .p720:
+            return "720p"
+        case .p480:
+            return "480p"
+        }
+    }
+
+    var height: Int? {
+        switch self {
+        case .source:
+            return nil
+        case .p2160:
+            return 2160
+        case .p1440:
+            return 1440
+        case .p1080:
+            return 1080
+        case .p720:
+            return 720
+        case .p480:
+            return 480
+        }
+    }
+}
+
+enum VideoPresetOption: String, CaseIterable, Identifiable {
+    case none
+    case ultrafast
+    case superfast
+    case veryfast
+    case faster
+    case fast
+    case medium
+    case slow
+    case slower
+    case veryslow
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        self == .none ? "默认" : rawValue
+    }
+}
+
+enum AudioCodecOption: String, CaseIterable, Identifiable {
+    case auto
+    case aac
+    case mp3
+    case opus
+    case vorbis
+    case flac
+    case alac
+    case pcmS16le
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto:
+            return "自动"
+        case .aac:
+            return "AAC"
+        case .mp3:
+            return "MP3 (LAME)"
+        case .opus:
+            return "Opus"
+        case .vorbis:
+            return "Vorbis"
+        case .flac:
+            return "FLAC"
+        case .alac:
+            return "ALAC"
+        case .pcmS16le:
+            return "PCM S16LE"
+        }
+    }
+
+    var ffmpegCodecName: String? {
+        switch self {
+        case .auto:
+            return nil
+        case .aac:
+            return "aac"
+        case .mp3:
+            return "libmp3lame"
+        case .opus:
+            return "libopus"
+        case .vorbis:
+            return "libvorbis"
+        case .flac:
+            return "flac"
+        case .alac:
+            return "alac"
+        case .pcmS16le:
+            return "pcm_s16le"
+        }
+    }
+}
+
+enum ConversionTaskStatus: String {
+    case queued
+    case running
+    case succeeded
+    case failed
+
+    var displayName: String {
+        switch self {
+        case .queued:
+            return "排队中"
+        case .running:
+            return "执行中"
+        case .succeeded:
+            return "成功"
+        case .failed:
+            return "失败"
+        }
+    }
+}
+
+enum OutputLocationMode: String, CaseIterable, Identifiable {
+    case sourceDirectory
+    case specifiedDirectory
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .sourceDirectory:
+            return "源文件目录"
+        case .specifiedDirectory:
+            return "指定目录"
+        }
+    }
+}
+
+struct ConversionTask: Identifiable {
+    let id: UUID
+    let createdAt: Date
+    let inputURL: URL
+    let outputURL: URL
+    let format: ConversionFormat
+    let domain: ConversionDomain
+    let overwriteExisting: Bool
+    let extraArguments: [String]
+    let optionsSummary: String
+
+    var status: ConversionTaskStatus
+    var startedAt: Date?
+    var finishedAt: Date?
+    var logs: String
+}
+
+@MainActor
+final class ContentViewModel: ObservableObject {
+    @Published var domain: ConversionDomain = .video {
+        didSet { ensureFormatMatchesDomain() }
+    }
+
+    @Published var selectedVideoFiles: [URL] = []
+    @Published var selectedAudioFiles: [URL] = []
+    @Published var outputLocationMode: OutputLocationMode = .sourceDirectory
+    @Published var outputDirectory: URL?
+    @Published var format: ConversionFormat = .mp4
+    @Published var supportedFormats: Set<ConversionFormat> = Set(ConversionFormat.allCases)
+
+    @Published var overwriteExistingFiles = true
+    @Published var conversionPreset: ConversionPreset = .balanced {
+        didSet { applyPreset() }
+    }
+
+    // Video advanced settings
+    @Published var videoRateControl: VideoRateControl = .constantQuality
+    @Published var videoEncoder: VideoEncoderOption = .auto
+    @Published var videoScalePreset: VideoScalePreset = .source
+    @Published var videoPreset: VideoPresetOption = .medium
+    @Published var videoPixelFormat: String = "yuv420p"
+    @Published var videoGOP: String = ""
+    @Published var videoProfile: String = ""
+    @Published var videoLevel: String = ""
+    @Published var videoTune: String = ""
+    @Published var videoCRF: Double = 23
+    @Published var videoBitrateKbps: String = "2500"
+    @Published var videoMaxBitrateKbps: String = ""
+    @Published var videoBufferSizeKbps: String = ""
+    @Published var videoFrameRate: String = ""
+    @Published var enableDeinterlace = false
+
+    // Audio advanced settings
+    @Published var audioCodec: AudioCodecOption = .auto
+    @Published var audioBitrateKbps: String = "192"
+    @Published var audioSampleRate: String = "44100"
+    @Published var audioChannels: Int = 2
+    @Published var audioVolumeDB: String = ""
+    @Published var audioVBRQuality: String = ""
+    @Published var enableLoudnorm = false
+
+    // General expert settings
+    @Published var keepMetadata = true
+    @Published var enableFastStart = true
+    @Published var startTime: String = ""
+    @Published var duration: String = ""
+    @Published var threadCount: String = ""
+    @Published var customFFmpegArgs: String = ""
+
+    // Queue controls
+    @Published var tasks: [ConversionTask] = []
+    @Published var selectedTaskID: UUID?
+    @Published var maxConcurrentTasks: Int = 2
+    @Published var isProcessingQueue = false
+    @Published var appLogs = ""
+
+    let runner = FFmpegRunner()
+    var capabilities: FFmpegCapabilities?
+
+    init() {
+        applyPreset()
+        Task {
+            await refreshSupportedFormats()
+        }
+    }
+
+    var selectedFiles: [URL] {
+        domain == .video ? selectedVideoFiles : selectedAudioFiles
+    }
+
+    var availableFormats: [ConversionFormat] {
+        ConversionFormat.formats(for: domain).filter { supportedFormats.contains($0) }
+    }
+
+    var selectedTask: ConversionTask? {
+        guard let selectedTaskID else { return nil }
+        return tasks.first(where: { $0.id == selectedTaskID })
+    }
+}
