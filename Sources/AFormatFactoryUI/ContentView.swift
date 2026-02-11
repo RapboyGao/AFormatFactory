@@ -112,6 +112,22 @@ public struct ContentView: View {
                 Button("选择输入文件") { viewModel.pickInputFiles() }
                     .buttonStyle(.borderedProminent)
 
+                Picker("输出格式", selection: $viewModel.format) {
+                    ForEach(viewModel.availableFormats) { format in
+                        Text(format.displayName).tag(format)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 180)
+
+                Spacer()
+            }
+
+            HStack(spacing: 10) {
+                Text("输出位置")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+
                 Picker("输出位置", selection: $viewModel.outputLocationMode) {
                     ForEach(OutputLocationMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -124,14 +140,6 @@ public struct ContentView: View {
                     Button("选择输出目录") { viewModel.pickOutputDirectory() }
                         .buttonStyle(.bordered)
                 }
-
-                Picker("输出格式", selection: $viewModel.format) {
-                    ForEach(viewModel.availableFormats) { format in
-                        Text(format.displayName).tag(format)
-                    }
-                }
-                .pickerStyle(.menu)
-                .frame(width: 180)
 
                 Spacer()
             }
