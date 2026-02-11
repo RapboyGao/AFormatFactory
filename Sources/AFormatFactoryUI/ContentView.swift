@@ -45,9 +45,45 @@ public struct ContentView: View {
 
             GroupBox("高级参数") {
                 VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        LabeledContent("参数预设") {
+                            Picker("参数预设", selection: $viewModel.conversionPreset) {
+                                ForEach(ConversionPreset.allCases) { preset in
+                                    Text(preset.displayName).tag(preset)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 140)
+                        }
+                        Spacer()
+                    }
+
                     Toggle("覆盖同名输出文件", isOn: $viewModel.overwriteExistingFiles)
 
                     if viewModel.domain == .video {
+                        HStack(spacing: 12) {
+                            LabeledContent("视频编码器") {
+                                Picker("视频编码器", selection: $viewModel.videoEncoder) {
+                                    ForEach(viewModel.availableVideoEncoders) { encoder in
+                                        Text(encoder.displayName).tag(encoder)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 140)
+                            }
+
+                            LabeledContent("分辨率") {
+                                Picker("分辨率", selection: $viewModel.videoScalePreset) {
+                                    ForEach(VideoScalePreset.allCases) { scale in
+                                        Text(scale.displayName).tag(scale)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .frame(width: 140)
+                            }
+                            Spacer()
+                        }
+
                         Picker("视频码控", selection: $viewModel.videoRateControl) {
                             ForEach(VideoRateControl.allCases) { mode in
                                 Text(mode.displayName).tag(mode)

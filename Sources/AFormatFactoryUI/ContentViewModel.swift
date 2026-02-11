@@ -18,6 +18,92 @@ enum VideoRateControl: String, CaseIterable, Identifiable {
     }
 }
 
+enum ConversionPreset: String, CaseIterable, Identifiable {
+    case highQuality
+    case balanced
+    case smallSize
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .highQuality:
+            return "高质量"
+        case .balanced:
+            return "均衡"
+        case .smallSize:
+            return "小体积"
+        }
+    }
+}
+
+enum VideoEncoderOption: String, CaseIterable, Identifiable {
+    case auto
+    case h264
+    case h265
+    case av1
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto:
+            return "自动"
+        case .h264:
+            return "H.264"
+        case .h265:
+            return "H.265"
+        case .av1:
+            return "AV1"
+        }
+    }
+}
+
+enum VideoScalePreset: String, CaseIterable, Identifiable {
+    case source
+    case p2160
+    case p1440
+    case p1080
+    case p720
+    case p480
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .source:
+            return "保持原始"
+        case .p2160:
+            return "4K (2160p)"
+        case .p1440:
+            return "2K (1440p)"
+        case .p1080:
+            return "1080p"
+        case .p720:
+            return "720p"
+        case .p480:
+            return "480p"
+        }
+    }
+
+    var height: Int? {
+        switch self {
+        case .source:
+            return nil
+        case .p2160:
+            return 2160
+        case .p1440:
+            return 1440
+        case .p1080:
+            return 1080
+        case .p720:
+            return 720
+        case .p480:
+            return 480
+        }
+    }
+}
+
 @MainActor
 final class ContentViewModel: ObservableObject {
     @Published var domain: ConversionDomain = .video {
@@ -31,9 +117,14 @@ final class ContentViewModel: ObservableObject {
     @Published var logs = ""
     @Published private(set) var supportedFormats: Set<ConversionFormat> = Set(ConversionFormat.allCases)
     @Published var overwriteExistingFiles = true
+    @Published var conversionPreset: ConversionPreset = .balanced {
+        didSet { applyPreset() }
+    }
 
     // Video advanced settings
     @Published var videoRateControl: VideoRateControl = .constantQuality
+    @Published var videoEncoder: VideoEncoderOption = .auto
+    @Published var videoScalePreset: VideoScalePreset = .source
     @Published var videoCRF: Double = 23
     @Published var videoBitrateKbps: String = "2500"
     @Published var videoFrameRate: String = ""
@@ -44,8 +135,10 @@ final class ContentViewModel: ObservableObject {
     @Published var audioChannels: Int = 2
 
     private let runner = FFmpegRunner()
+    private var capabilities: FFmpegCapabilities?
 
     init() {
+        applyPreset()
         Task {
             await refreshSupportedFormats()
         }
@@ -57,6 +150,22 @@ final class ContentViewModel: ObservableObject {
 
     var availableFormats: [ConversionFormat] {
         ConversionFormat.formats(for: domain).filter { supportedFormats.contains($0) }
+    }
+
+    var availableVideoEncoders: [VideoEncoderOption] {
+        guard let capabilities else { return VideoEncoderOption.allCases }
+
+        var result: [VideoEncoderOption] = [.auto]
+        if hasAnyEncoder(["libx264", "h264_videotoolbox", "mpeg4"], in: capabilities) {
+            result.append(.h264)
+        }
+        if hasAnyEncoder(["libx265", "hevc_videotoolbox"], in: capabilities) {
+            result.append(.h265)
+        }
+        if hasAnyEncoder(["libsvtav1", "libaom-av1", "librav1e"], in: capabilities) {
+            result.append(.av1)
+        }
+        return result
     }
 
     func pickInputFiles() {
@@ -144,7 +253,9 @@ final class ContentViewModel: ObservableObject {
                 appendLog("警告：未探测到可用格式，已保留默认列表。")
                 return
             }
+            self.capabilities = capabilities
             supportedFormats = supported
+            ensureVideoEncoderIsSupported()
             ensureFormatMatchesDomain()
             appendLog("已按内置 ffmpeg 能力过滤格式，当前可用 \(supported.count) 项。")
         } catch {
@@ -190,6 +301,10 @@ final class ContentViewModel: ObservableObject {
 
         if domain == .video {
             if format != .gif {
+                args += selectedVideoEncoderArguments()
+            }
+
+            if format != .gif {
                 switch videoRateControl {
                 case .constantQuality:
                     args += ["-crf", "\(Int(videoCRF))"]
@@ -202,6 +317,10 @@ final class ContentViewModel: ObservableObject {
 
             if let fps = parsedPositiveDouble(videoFrameRate) {
                 args += ["-r", String(format: "%.2f", fps)]
+            }
+
+            if format != .gif, let height = videoScalePreset.height {
+                args += ["-vf", "scale=-2:\(height):flags=lanczos"]
             }
         }
 
@@ -218,6 +337,54 @@ final class ContentViewModel: ObservableObject {
         }
 
         return args
+    }
+
+    private func selectedVideoEncoderArguments() -> [String] {
+        switch videoEncoder {
+        case .auto:
+            return []
+        case .h264:
+            if hasAnyEncoder(["libx264"]) { return ["-c:v", "libx264"] }
+            if hasAnyEncoder(["h264_videotoolbox"]) { return ["-c:v", "h264_videotoolbox"] }
+            if hasAnyEncoder(["mpeg4"]) { return ["-c:v", "mpeg4"] }
+        case .h265:
+            if hasAnyEncoder(["libx265"]) { return ["-c:v", "libx265"] }
+            if hasAnyEncoder(["hevc_videotoolbox"]) { return ["-c:v", "hevc_videotoolbox"] }
+        case .av1:
+            if hasAnyEncoder(["libsvtav1"]) { return ["-c:v", "libsvtav1"] }
+            if hasAnyEncoder(["libaom-av1"]) { return ["-c:v", "libaom-av1"] }
+            if hasAnyEncoder(["librav1e"]) { return ["-c:v", "librav1e"] }
+        }
+        return []
+    }
+
+    private func hasAnyEncoder(_ names: [String], in capabilities: FFmpegCapabilities? = nil) -> Bool {
+        let source = capabilities ?? self.capabilities
+        guard let source else { return false }
+        return names.contains { source.encoders.contains($0) }
+    }
+
+    private func ensureVideoEncoderIsSupported() {
+        if !availableVideoEncoders.contains(videoEncoder) {
+            videoEncoder = .auto
+        }
+    }
+
+    private func applyPreset() {
+        switch conversionPreset {
+        case .highQuality:
+            videoRateControl = .constantQuality
+            videoCRF = 18
+            audioBitrateKbps = "320"
+        case .balanced:
+            videoRateControl = .constantQuality
+            videoCRF = 23
+            audioBitrateKbps = "192"
+        case .smallSize:
+            videoRateControl = .constantQuality
+            videoCRF = 30
+            audioBitrateKbps = "128"
+        }
     }
 
     private func parsedPositiveInt(_ value: String) -> Int? {
