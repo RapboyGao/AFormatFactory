@@ -145,6 +145,37 @@ public struct ContentView: View {
 
             Divider().overlay(.white.opacity(0.2))
 
+            VStack(alignment: .leading, spacing: 8) {
+                Text("已选输入文件（\(viewModel.selectedFiles.count)）")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+
+                if viewModel.selectedFiles.isEmpty {
+                    Text("尚未选择输入文件")
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.6))
+                        .padding(.vertical, 6)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(viewModel.selectedFiles, id: \.self) { file in
+                                Text(file.path)
+                                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                        .padding(8)
+                    }
+                    .frame(minHeight: 80, maxHeight: 150)
+                    .background(Color.black.opacity(0.22))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
+
+            Divider().overlay(.white.opacity(0.2))
+
             parameterEditor
         }
         .cardStyle()
