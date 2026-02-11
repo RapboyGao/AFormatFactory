@@ -2,6 +2,22 @@ import AppKit
 import Foundation
 import UniformTypeIdentifiers
 
+enum VideoRateControl: String, CaseIterable, Identifiable {
+    case constantQuality
+    case targetBitrate
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .constantQuality:
+            return "恒定质量 (CRF)"
+        case .targetBitrate:
+            return "目标码率"
+        }
+    }
+}
+
 @MainActor
 final class ContentViewModel: ObservableObject {
     @Published var domain: ConversionDomain = .video {
@@ -14,6 +30,18 @@ final class ContentViewModel: ObservableObject {
     @Published var isConverting = false
     @Published var logs = ""
     @Published private(set) var supportedFormats: Set<ConversionFormat> = Set(ConversionFormat.allCases)
+    @Published var overwriteExistingFiles = true
+
+    // Video advanced settings
+    @Published var videoRateControl: VideoRateControl = .constantQuality
+    @Published var videoCRF: Double = 23
+    @Published var videoBitrateKbps: String = "2500"
+    @Published var videoFrameRate: String = ""
+
+    // Audio advanced settings
+    @Published var audioBitrateKbps: String = "192"
+    @Published var audioSampleRate: String = "44100"
+    @Published var audioChannels: Int = 2
 
     private let runner = FFmpegRunner()
 
@@ -81,7 +109,14 @@ final class ContentViewModel: ObservableObject {
             appendLog("[\(index + 1)/\(files.count)] 开始：\(file.lastPathComponent)")
 
             do {
-                try await runner.transcode(input: file, output: output, format: format) { [weak self] message in
+                let extraArguments = extraFFmpegArguments()
+                try await runner.transcode(
+                    input: file,
+                    output: output,
+                    format: format,
+                    overwriteExisting: overwriteExistingFiles,
+                    extraArguments: extraArguments
+                ) { [weak self] message in
                     Task { @MainActor in
                         self?.appendLog(message.trimmingCharacters(in: .whitespacesAndNewlines))
                     }
@@ -148,5 +183,52 @@ final class ContentViewModel: ObservableObject {
         } else {
             logs += "\n\(line)"
         }
+    }
+
+    private func extraFFmpegArguments() -> [String] {
+        var args: [String] = []
+
+        if domain == .video {
+            if format != .gif {
+                switch videoRateControl {
+                case .constantQuality:
+                    args += ["-crf", "\(Int(videoCRF))"]
+                case .targetBitrate:
+                    if let bitrate = parsedPositiveInt(videoBitrateKbps) {
+                        args += ["-b:v", "\(bitrate)k"]
+                    }
+                }
+            }
+
+            if let fps = parsedPositiveDouble(videoFrameRate) {
+                args += ["-r", String(format: "%.2f", fps)]
+            }
+        }
+
+        if format != .gif {
+            if let bitrate = parsedPositiveInt(audioBitrateKbps) {
+                args += ["-b:a", "\(bitrate)k"]
+            }
+            if let sampleRate = parsedPositiveInt(audioSampleRate) {
+                args += ["-ar", "\(sampleRate)"]
+            }
+            if audioChannels > 0 {
+                args += ["-ac", "\(audioChannels)"]
+            }
+        }
+
+        return args
+    }
+
+    private func parsedPositiveInt(_ value: String) -> Int? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let intValue = Int(trimmed), intValue > 0 else { return nil }
+        return intValue
+    }
+
+    private func parsedPositiveDouble(_ value: String) -> Double? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let doubleValue = Double(trimmed), doubleValue > 0 else { return nil }
+        return doubleValue
     }
 }

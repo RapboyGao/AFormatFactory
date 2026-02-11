@@ -43,6 +43,65 @@ public struct ContentView: View {
                 .disabled(viewModel.isConverting)
             }
 
+            GroupBox("高级参数") {
+                VStack(alignment: .leading, spacing: 10) {
+                    Toggle("覆盖同名输出文件", isOn: $viewModel.overwriteExistingFiles)
+
+                    if viewModel.domain == .video {
+                        Picker("视频码控", selection: $viewModel.videoRateControl) {
+                            ForEach(VideoRateControl.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        HStack(spacing: 12) {
+                            if viewModel.videoRateControl == .constantQuality {
+                                HStack(spacing: 8) {
+                                    Text("CRF")
+                                    Slider(value: $viewModel.videoCRF, in: 16...35, step: 1)
+                                    Text("\(Int(viewModel.videoCRF))")
+                                        .frame(width: 30, alignment: .trailing)
+                                }
+                            } else {
+                                LabeledContent("视频码率(kbps)") {
+                                    TextField("2500", text: $viewModel.videoBitrateKbps)
+                                        .textFieldStyle(.roundedBorder)
+                                        .frame(width: 120)
+                                }
+                            }
+
+                            LabeledContent("帧率(FPS)") {
+                                TextField("留空=保持原始", text: $viewModel.videoFrameRate)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 130)
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 12) {
+                        LabeledContent("音频码率(kbps)") {
+                            TextField("192", text: $viewModel.audioBitrateKbps)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 100)
+                        }
+                        LabeledContent("采样率(Hz)") {
+                            TextField("44100", text: $viewModel.audioSampleRate)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 100)
+                        }
+                        LabeledContent("声道") {
+                            Stepper(value: $viewModel.audioChannels, in: 1...8) {
+                                Text("\(viewModel.audioChannels)")
+                                    .frame(width: 24, alignment: .trailing)
+                            }
+                            .frame(width: 80)
+                        }
+                    }
+                }
+                .padding(.top, 4)
+            }
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(viewModel.domain.displayName) 输入文件（\(viewModel.selectedFiles.count)）")
                     .font(.headline)

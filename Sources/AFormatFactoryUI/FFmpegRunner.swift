@@ -19,13 +19,16 @@ struct FFmpegRunner {
         input: URL,
         output: URL,
         format: ConversionFormat,
+        overwriteExisting: Bool,
+        extraArguments: [String],
         logHandler: @escaping @Sendable (String) -> Void
     ) async throws {
         let executable = try await ensureBundledFFmpeg(logHandler: logHandler)
         let process = Process()
         process.executableURL = executable
 
-        let arguments = ["-y", "-i", input.path] + format.extraArguments + [output.path]
+        let overwriteFlag = overwriteExisting ? "-y" : "-n"
+        let arguments = [overwriteFlag, "-i", input.path] + format.extraArguments + extraArguments + [output.path]
         process.arguments = arguments
 
         let outputPipe = Pipe()
