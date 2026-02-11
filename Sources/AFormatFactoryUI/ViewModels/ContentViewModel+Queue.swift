@@ -39,6 +39,68 @@ actor AsyncSemaphore {
 }
 
 extension ContentViewModel {
+    func removeSelectedTask() {
+        guard let selectedTaskID else { return }
+        removeTask(id: selectedTaskID)
+    }
+
+    func removeTask(id: UUID) {
+        guard !isProcessingQueue else {
+            appendAppLog("队列执行中，暂不允许删除任务。")
+            return
+        }
+        guard let index = indexOfTask(id: id) else { return }
+
+        let task = tasks[index]
+        guard task.status != .running else {
+            appendAppLog("任务正在执行中，不能删除：\(task.inputURL.lastPathComponent)")
+            return
+        }
+
+        tasks.remove(at: index)
+        if selectedTaskID == id {
+            selectedTaskID = tasks.indices.contains(index) ? tasks[index].id : tasks.last?.id
+        }
+        appendAppLog("已删除任务：\(task.inputURL.lastPathComponent)")
+    }
+
+    func removeTasks(at offsets: IndexSet) {
+        guard !isProcessingQueue else {
+            appendAppLog("队列执行中，暂不允许删除任务。")
+            return
+        }
+
+        let runningOffsets = offsets.filter { idx in
+            tasks.indices.contains(idx) && tasks[idx].status == .running
+        }
+        if !runningOffsets.isEmpty {
+            appendAppLog("包含执行中任务，已跳过这些删除项。")
+        }
+
+        let removable = offsets.filter { idx in
+            tasks.indices.contains(idx) && tasks[idx].status != .running
+        }
+        guard !removable.isEmpty else { return }
+
+        let removedSelected = removable.contains { idx in
+            tasks[idx].id == selectedTaskID
+        }
+        tasks.remove(atOffsets: IndexSet(removable))
+        if removedSelected {
+            selectedTaskID = tasks.first?.id
+        }
+        appendAppLog("已删除 \(removable.count) 个任务。")
+    }
+
+    func moveTasks(from source: IndexSet, to destination: Int) {
+        guard !isProcessingQueue else {
+            appendAppLog("队列执行中，暂不允许调整任务顺序。")
+            return
+        }
+        tasks.move(fromOffsets: source, toOffset: destination)
+        appendAppLog("任务顺序已更新。")
+    }
+
     @discardableResult
     func addTasksFromSelection() -> Int {
         let files = selectedFiles
@@ -83,6 +145,12 @@ extension ContentViewModel {
         }
 
         tasks.append(contentsOf: newTasks)
+        switch domain {
+        case .video:
+            selectedVideoFiles.removeAll()
+        case .audio:
+            selectedAudioFiles.removeAll()
+        }
         if selectedTaskID == nil {
             selectedTaskID = newTasks.first?.id
         }

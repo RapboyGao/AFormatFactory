@@ -6,6 +6,8 @@ struct TaskWorkspaceView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
+                taskStatsRow
+
                 HStack {
                     Text("任务队列")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -21,6 +23,10 @@ struct TaskWorkspaceView: View {
                     Button("清理已完成") { viewModel.clearFinishedTasks() }
                         .buttonStyle(MaterialActionButtonStyle())
 
+                    Button("删除任务") { viewModel.removeSelectedTask() }
+                        .buttonStyle(MaterialActionButtonStyle())
+                        .disabled(viewModel.selectedTaskID == nil || viewModel.isProcessingQueue)
+
                     Stepper(value: $viewModel.maxConcurrentTasks, in: 1...8) {
                         Text("并发 \(viewModel.maxConcurrentTasks)")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
@@ -28,6 +34,10 @@ struct TaskWorkspaceView: View {
                     }
                     .frame(width: 110)
                 }
+
+                Text("提示：可在列表中直接拖拽任务行调整顺序。")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.62))
 
                 List(selection: $viewModel.selectedTaskID) {
                     ForEach(viewModel.tasks) { task in
@@ -49,6 +59,8 @@ struct TaskWorkspaceView: View {
                         }
                         .tag(task.id)
                     }
+                    .onDelete(perform: viewModel.removeTasks)
+                    .onMove(perform: viewModel.moveTasks)
                 }
                 .scrollContentBackground(.hidden)
                 .background(Color.white.opacity(0.03))
@@ -89,5 +101,28 @@ struct TaskWorkspaceView: View {
         case .failed:
             return .red
         }
+    }
+
+    private var taskStatsRow: some View {
+        HStack(spacing: 8) {
+            statsChip(title: "总任务", count: viewModel.tasks.count, icon: "tray.full")
+            statsChip(title: "排队", count: count(for: .queued), icon: "clock")
+            statsChip(title: "运行", count: count(for: .running), icon: "bolt")
+            statsChip(title: "成功", count: count(for: .succeeded), icon: "checkmark.circle")
+            statsChip(title: "失败", count: count(for: .failed), icon: "xmark.octagon")
+            Spacer()
+        }
+    }
+
+    private func statsChip(title: String, count: Int, icon: String) -> some View {
+        Label("\(title) \(count)", systemImage: icon)
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial, in: Capsule())
+    }
+
+    private func count(for status: ConversionTaskStatus) -> Int {
+        viewModel.tasks.filter { $0.status == status }.count
     }
 }
