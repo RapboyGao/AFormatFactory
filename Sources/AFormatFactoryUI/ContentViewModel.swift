@@ -124,6 +124,22 @@ enum ConversionTaskStatus: String {
     }
 }
 
+enum OutputLocationMode: String, CaseIterable, Identifiable {
+    case sourceDirectory
+    case specifiedDirectory
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .sourceDirectory:
+            return "源文件目录"
+        case .specifiedDirectory:
+            return "指定目录"
+        }
+    }
+}
+
 struct ConversionTask: Identifiable {
     let id: UUID
     let createdAt: Date
@@ -187,6 +203,7 @@ final class ContentViewModel: ObservableObject {
 
     @Published private(set) var selectedVideoFiles: [URL] = []
     @Published private(set) var selectedAudioFiles: [URL] = []
+    @Published var outputLocationMode: OutputLocationMode = .sourceDirectory
     @Published var outputDirectory: URL?
     @Published var format: ConversionFormat = .mp4
     @Published private(set) var supportedFormats: Set<ConversionFormat> = Set(ConversionFormat.allCases)
@@ -295,23 +312,24 @@ final class ContentViewModel: ObservableObject {
         appendAppLog("已移除输入文件：\(file.lastPathComponent)")
     }
 
-    func addTasksFromSelection() {
+    @discardableResult
+    func addTasksFromSelection() -> Int {
         let files = selectedFiles
         guard !files.isEmpty else {
             appendAppLog("请先选择输入文件。")
-            return
+            return 0
         }
 
-        guard let outputDirectory else {
+        guard outputLocationMode == .sourceDirectory || outputDirectory != nil else {
             appendAppLog("请先选择输出目录。")
-            return
+            return 0
         }
 
         let extraArguments = extraFFmpegArguments()
         let optionsSummary = currentOptionsSummary()
 
         let newTasks = files.map { file -> ConversionTask in
-            let output = outputURL(for: file, in: outputDirectory)
+            let output = outputURL(for: file)
             let lines = [
                 "任务已创建。",
                 "输入：\(file.path)",
@@ -342,6 +360,7 @@ final class ContentViewModel: ObservableObject {
             selectedTaskID = newTasks.first?.id
         }
         appendAppLog("已添加 \(newTasks.count) 个任务到队列。")
+        return newTasks.count
     }
 
     func startQueuedTasks() async {
@@ -495,11 +514,28 @@ final class ContentViewModel: ObservableObject {
         return extensions.compactMap { UTType(filenameExtension: $0) }
     }
 
-    private func outputURL(for file: URL, in outputDirectory: URL) -> URL {
+    private func outputURL(for file: URL) -> URL {
+        let directory = resolvedOutputDirectory(for: file)
         let baseName = file.deletingPathExtension().lastPathComponent
         let ext = format.outputExtension
-        let filename = "\(baseName).\(ext)"
-        return outputDirectory.appendingPathComponent(filename, isDirectory: false)
+        var filename = "\(baseName).\(ext)"
+
+        // Avoid overwriting source when output extension is same and destination is source directory.
+        let sourceDirMode = outputLocationMode == .sourceDirectory
+        if sourceDirMode, file.pathExtension.lowercased() == ext.lowercased() {
+            filename = "\(baseName)_converted.\(ext)"
+        }
+
+        return directory.appendingPathComponent(filename, isDirectory: false)
+    }
+
+    private func resolvedOutputDirectory(for file: URL) -> URL {
+        switch outputLocationMode {
+        case .sourceDirectory:
+            return file.deletingLastPathComponent()
+        case .specifiedDirectory:
+            return outputDirectory ?? file.deletingLastPathComponent()
+        }
     }
 
     private func indexOfTask(id: UUID) -> Int? {
@@ -609,6 +645,7 @@ final class ContentViewModel: ObservableObject {
     private func currentOptionsSummary() -> String {
         var segments: [String] = [
             "预设=\(conversionPreset.displayName)",
+            "输出=\(outputLocationMode.displayName)",
             "覆盖=\(overwriteExistingFiles ? "是" : "否")"
         ]
 

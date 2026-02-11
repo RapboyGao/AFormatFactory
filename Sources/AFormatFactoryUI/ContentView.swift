@@ -112,8 +112,18 @@ public struct ContentView: View {
                 Button("选择输入文件") { viewModel.pickInputFiles() }
                     .buttonStyle(.borderedProminent)
 
-                Button("选择输出目录") { viewModel.pickOutputDirectory() }
-                    .buttonStyle(.bordered)
+                Picker("输出位置", selection: $viewModel.outputLocationMode) {
+                    ForEach(OutputLocationMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(width: 130)
+
+                if viewModel.outputLocationMode == .specifiedDirectory {
+                    Button("选择输出目录") { viewModel.pickOutputDirectory() }
+                        .buttonStyle(.bordered)
+                }
 
                 Picker("输出格式", selection: $viewModel.format) {
                     ForEach(viewModel.availableFormats) { format in
@@ -126,15 +136,21 @@ public struct ContentView: View {
                 Spacer()
             }
 
-            if let output = viewModel.outputDirectory {
-                Text("输出目录：\(output.path)")
+            if viewModel.outputLocationMode == .sourceDirectory {
+                Text("输出目录：源文件所在目录（每个任务按各自源文件目录输出）")
                     .font(.system(size: 12, weight: .regular, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.75))
-                    .lineLimit(1)
             } else {
-                Text("输出目录：未选择")
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.65))
+                if let output = viewModel.outputDirectory {
+                    Text("输出目录：\(output.path)")
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(1)
+                } else {
+                    Text("输出目录：未选择")
+                        .font(.system(size: 12, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
             }
 
             Divider().overlay(.white.opacity(0.2))
@@ -190,12 +206,15 @@ public struct ContentView: View {
         HStack {
             Spacer()
             Button("添加任务") {
-                viewModel.addTasksFromSelection()
-                selectedSection = .tasks
+                let added = viewModel.addTasksFromSelection()
+                if added > 0 {
+                    selectedSection = .tasks
+                }
             }
             .buttonStyle(.borderedProminent)
         }
-        .cardStyle(padding: 10)
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
     }
 
     private var parameterEditor: some View {
@@ -230,6 +249,7 @@ public struct ContentView: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .labelsHidden()
                         .frame(width: 145)
                     }
 
@@ -240,6 +260,7 @@ public struct ContentView: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .labelsHidden()
                         .frame(width: 145)
                     }
 
