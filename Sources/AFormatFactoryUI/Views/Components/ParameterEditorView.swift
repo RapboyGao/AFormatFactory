@@ -35,21 +35,27 @@ struct ParameterEditorView: View {
                 Divider().overlay(.white.opacity(0.18))
                 HStack {
                     sectionTitle("视频参数")
-                    Toggle("视频流 Copy", isOn: $viewModel.copyVideoStream)
-                        .toggleStyle(MaterialToggleStyle())
+
                     Spacer()
                 }
 
+                Toggle("视频流 Copy", isOn: $viewModel.copyVideoStream)
+                    .toggleStyle(MaterialToggleStyle())
+
                 if viewModel.copyVideoStream {
                     Text("视频流将直接复制（`-c:v copy`），已隐藏重编码参数。")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(
+                            .system(size: 11, weight: .medium, design: .rounded)
+                        )
                         .foregroundStyle(.white.opacity(0.68))
                 } else {
                     HStack(spacing: 0) {
                         HStack(alignment: .top, spacing: 12) {
                             parameterField("视频编码器", width: 100) {
-                                Picker("视频编码器", selection: $viewModel.videoEncoder)
-                                {
+                                Picker(
+                                    "视频编码器",
+                                    selection: $viewModel.videoEncoder
+                                ) {
                                     ForEach(viewModel.availableVideoEncoders) {
                                         encoder in
                                         Text(encoder.displayName).tag(encoder)
@@ -60,8 +66,12 @@ struct ParameterEditorView: View {
                             }
 
                             parameterField("编码预设", width: 110) {
-                                Picker("编码预设", selection: $viewModel.videoPreset) {
-                                    ForEach(VideoPresetOption.allCases) { preset in
+                                Picker(
+                                    "编码预设",
+                                    selection: $viewModel.videoPreset
+                                ) {
+                                    ForEach(VideoPresetOption.allCases) {
+                                        preset in
                                         Text(preset.displayName).tag(preset)
                                     }
                                 }
@@ -74,7 +84,8 @@ struct ParameterEditorView: View {
                                     "分辨率",
                                     selection: $viewModel.videoScalePreset
                                 ) {
-                                    ForEach(VideoScalePreset.allCases) { scale in
+                                    ForEach(VideoScalePreset.allCases) {
+                                        scale in
                                         Text(scale.displayName).tag(scale)
                                     }
                                 }
@@ -117,9 +128,12 @@ struct ParameterEditorView: View {
                             }
                         } else {
                             parameterField("视频码率(kbps)", width: 110) {
-                                TextField("2500", text: $viewModel.videoBitrateKbps)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 110)
+                                TextField(
+                                    "2500",
+                                    text: $viewModel.videoBitrateKbps
+                                )
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 110)
                             }
                         }
 
@@ -130,15 +144,21 @@ struct ParameterEditorView: View {
                         }
 
                         parameterField("最大码率(kbps)", width: 100) {
-                            TextField("选填", text: $viewModel.videoMaxBitrateKbps)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
+                            TextField(
+                                "选填",
+                                text: $viewModel.videoMaxBitrateKbps
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
                         }
 
                         parameterField("缓冲(kbps)", width: 100) {
-                            TextField("选填", text: $viewModel.videoBufferSizeKbps)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
+                            TextField(
+                                "选填",
+                                text: $viewModel.videoBufferSizeKbps
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
                         }
 
                         Spacer()
@@ -151,14 +171,20 @@ struct ParameterEditorView: View {
                                 .frame(width: 90)
                         }
                         parameterField("像素格式", width: 110) {
-                            TextField("yuv420p", text: $viewModel.videoPixelFormat)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 110)
+                            TextField(
+                                "yuv420p",
+                                text: $viewModel.videoPixelFormat
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 110)
                         }
                         parameterField("Profile", width: 100) {
-                            TextField("high/main", text: $viewModel.videoProfile)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
+                            TextField(
+                                "high/main",
+                                text: $viewModel.videoProfile
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
                         }
                         parameterField("Level", width: 70) {
                             TextField("4.1", text: $viewModel.videoLevel)
@@ -166,9 +192,12 @@ struct ParameterEditorView: View {
                                 .frame(width: 70)
                         }
                         parameterField("Tune", width: 130) {
-                            TextField("film/animation", text: $viewModel.videoTune)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 130)
+                            TextField(
+                                "film/animation",
+                                text: $viewModel.videoTune
+                            )
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 130)
                         }
                         parameterField("去隔行", width: 80) {
                             Toggle("", isOn: $viewModel.enableDeinterlace)
@@ -183,10 +212,12 @@ struct ParameterEditorView: View {
             Divider().overlay(.white.opacity(0.18))
             HStack {
                 sectionTitle("音频参数")
-                Toggle("音频流 Copy", isOn: $viewModel.copyAudioStream)
-                    .toggleStyle(MaterialToggleStyle())
+
                 Spacer()
             }
+
+            Toggle("音频流 Copy", isOn: $viewModel.copyAudioStream)
+                .toggleStyle(MaterialToggleStyle())
 
             if viewModel.copyAudioStream {
                 Text("音频流将直接复制（`-c:a copy`），已隐藏重编码参数。")

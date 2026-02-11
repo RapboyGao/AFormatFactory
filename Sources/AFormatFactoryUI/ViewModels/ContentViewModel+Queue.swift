@@ -143,7 +143,7 @@ extension ContentViewModel {
     }
 
     @discardableResult
-    func addTasksFromSelection() -> Int {
+    func addTasksFromSelection() async -> Int {
         let files = selectedFiles
         guard !files.isEmpty else {
             appendAppLog("请先选择输入文件。")
@@ -158,10 +158,12 @@ extension ContentViewModel {
         let extraArguments = extraFFmpegArguments()
         let optionsSummary = currentOptionsSummary()
 
-        let newTasks = files.map { file -> ConversionTask in
+        var newTasks: [ConversionTask] = []
+        newTasks.reserveCapacity(files.count)
+        for file in files {
             let output = outputURL(for: file)
-            let sourceDuration = mediaDurationSeconds(for: file)
-            let totalFrames = estimatedFrameCount(for: file, duration: sourceDuration)
+            let sourceDuration = await mediaDurationSeconds(for: file)
+            let totalFrames = await estimatedFrameCount(for: file, duration: sourceDuration)
             let lines = [
                 "任务已创建。",
                 "输入：\(file.path)",
@@ -170,7 +172,7 @@ extension ContentViewModel {
                 "参数：\(optionsSummary)"
             ]
 
-            return ConversionTask(
+            let task = ConversionTask(
                 id: UUID(),
                 createdAt: Date(),
                 inputURL: file,
@@ -188,6 +190,7 @@ extension ContentViewModel {
                 logs: lines.joined(separator: "\n"),
                 progress: 0
             )
+            newTasks.append(task)
         }
 
         tasks.append(contentsOf: newTasks)
@@ -413,20 +416,31 @@ extension ContentViewModel {
         return Double(value)
     }
 
-    private func mediaDurationSeconds(for file: URL) -> Double? {
+    private func mediaDurationSeconds(for file: URL) async -> Double? {
         let asset = AVURLAsset(url: file)
-        let duration = CMTimeGetSeconds(asset.duration)
-        guard duration.isFinite, duration > 0 else { return nil }
-        return duration
+        do {
+            let duration = try await asset.load(.duration)
+            let seconds = CMTimeGetSeconds(duration)
+            guard seconds.isFinite, seconds > 0 else { return nil }
+            return seconds
+        } catch {
+            return nil
+        }
     }
 
-    private func estimatedFrameCount(for file: URL, duration: Double?) -> Double? {
+    private func estimatedFrameCount(for file: URL, duration: Double?) async -> Double? {
         guard let duration, duration > 0 else { return nil }
         let asset = AVURLAsset(url: file)
-        guard let track = asset.tracks(withMediaType: .video).first else { return nil }
-        let fps = Double(track.nominalFrameRate)
-        guard fps.isFinite, fps > 0 else { return nil }
-        return duration * fps
+        do {
+            let tracks = try await asset.loadTracks(withMediaType: .video)
+            guard let track = tracks.first else { return nil }
+            let fpsValue = try await track.load(.nominalFrameRate)
+            let fps = Double(fpsValue)
+            guard fps.isFinite, fps > 0 else { return nil }
+            return duration * fps
+        } catch {
+            return nil
+        }
     }
 
     private func indexOfTask(id: UUID) -> Int? {

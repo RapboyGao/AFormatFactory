@@ -132,9 +132,11 @@ struct ConversionWorkspaceView: View {
         HStack {
             Spacer()
             Button("添加任务") {
-                let added = viewModel.addTasksFromSelection()
-                if added > 0 {
-                    selectedSection = .tasks
+                Task { @MainActor in
+                    let added = await viewModel.addTasksFromSelection()
+                    if added > 0 {
+                        selectedSection = .tasks
+                    }
                 }
             }
             .buttonStyle(MaterialActionButtonStyle())
