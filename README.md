@@ -7,15 +7,12 @@
 - 选择输出目录
 - 选择输出格式（MP4 / MOV / MKV / MP3 / WAV / GIF）
 - 调用 FFmpeg 转码并显示日志
+- 不依赖系统 FFmpeg：仅使用应用内 FFmpeg（二进制缺失时自动下载）
 
 ## 环境
 - macOS 13+
 - Xcode 15+
-- 已安装 FFmpeg
-
-```bash
-brew install ffmpeg
-```
+- 网络可用（首次下载应用内 FFmpeg 时需要）
 
 ## 开发运行
 
@@ -61,3 +58,8 @@ SIGN_APP=0 ./Scripts/build_app.sh
 ## 图标
 - 默认会在首次打包时自动生成 `Assets/AppIcon.icns`。
 - 你也可以手动替换该文件后重新打包。
+
+## FFmpeg 来源说明
+- 打包时会自动下载并内置到：`AFormatFactory.app/Contents/Resources/bin/ffmpeg`
+- 运行时若检测不到该文件，会自动在线下载到应用目录后再执行转码
+- 转码流程不会使用系统路径（`/opt/homebrew/bin/ffmpeg` 等）

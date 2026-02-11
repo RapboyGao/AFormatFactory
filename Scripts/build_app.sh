@@ -43,6 +43,31 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$EXECUTABLE_PATH" "$MACOS_DIR/$EXECUTABLE_NAME"
 cp "$ICON_FILE" "$RESOURCES_DIR/AppIcon.icns"
 
+FFMPEG_BIN_DIR="$RESOURCES_DIR/bin"
+FFMPEG_BIN_PATH="$FFMPEG_BIN_DIR/ffmpeg"
+FFMPEG_ZIP_TMP="$ROOT_DIR/.build/ffmpeg.zip"
+if [[ ! -x "$FFMPEG_BIN_PATH" ]]; then
+  echo "[3.1/5] Fetching bundled ffmpeg..."
+  ARCH="$(uname -m)"
+  if [[ "$ARCH" == "arm64" ]]; then
+    FFMPEG_URL="https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip"
+  elif [[ "$ARCH" == "x86_64" ]]; then
+    FFMPEG_URL="https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/release/ffmpeg.zip"
+  else
+    echo "Unsupported CPU architecture: $ARCH" >&2
+    exit 1
+  fi
+  mkdir -p "$FFMPEG_BIN_DIR"
+  curl -L --fail --silent --show-error "$FFMPEG_URL" -o "$FFMPEG_ZIP_TMP"
+  if [[ ! -s "$FFMPEG_ZIP_TMP" ]]; then
+    echo "Downloaded ffmpeg archive is empty." >&2
+    exit 1
+  fi
+  /usr/bin/unzip -o "$FFMPEG_ZIP_TMP" -d "$FFMPEG_BIN_DIR" >/dev/null
+  chmod +x "$FFMPEG_BIN_PATH"
+  rm -f "$FFMPEG_ZIP_TMP"
+fi
+
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
