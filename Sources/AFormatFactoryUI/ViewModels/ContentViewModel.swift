@@ -238,6 +238,49 @@ enum OutputLocationMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum MediaEditOutputFormat: String, CaseIterable, Identifiable {
+    case sameAsSource
+    case mp4
+    case mkv
+    case mov
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .sameAsSource: return "与源文件一致"
+        case .mp4: return "MP4"
+        case .mkv: return "MKV"
+        case .mov: return "MOV"
+        }
+    }
+
+    func resolvedExtension(source: URL) -> String {
+        switch self {
+        case .sameAsSource:
+            return source.pathExtension.isEmpty ? "mp4" : source.pathExtension.lowercased()
+        case .mp4, .mkv, .mov:
+            return rawValue
+        }
+    }
+}
+
+enum MediaEditOutputLocationMode: String, CaseIterable, Identifiable {
+    case sourceDirectory
+    case specifiedDirectory
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .sourceDirectory:
+            return "源文件目录"
+        case .specifiedDirectory:
+            return "指定目录"
+        }
+    }
+}
+
 struct ConversionTask: Identifiable {
     let id: UUID
     let createdAt: Date
@@ -330,6 +373,25 @@ public final class ContentViewModel: ObservableObject {
     @Published var duration: String = ""
     @Published var threadCount: String = ""
     @Published var customFFmpegArgs: String = ""
+
+    // Media editor (single-video)
+    @Published var mediaEditInputVideoURL: URL?
+    @Published var mediaEditOutputLocationMode: MediaEditOutputLocationMode = .sourceDirectory
+    @Published var mediaEditOutputDirectory: URL?
+    @Published var mediaEditOutputFormat: MediaEditOutputFormat = .sameAsSource
+    @Published var mediaEditOverwriteExisting = true
+    @Published var mediaEditAdditionalAudioURL: URL?
+    @Published var mediaEditSubtitleURL: URL?
+    @Published var mediaEditMetadataTitle: String = ""
+    @Published var mediaEditMetadataArtist: String = ""
+    @Published var mediaEditMetadataAlbum: String = ""
+    @Published var mediaEditMetadataComment: String = ""
+    @Published var mediaEditMetadataYear: String = ""
+    @Published var mediaEditMetadataGenre: String = ""
+    @Published var mediaEditMetadataCopyright: String = ""
+    @Published var mediaEditMetadataLanguage: String = ""
+    @Published var mediaEditIsProcessing = false
+    @Published var mediaEditLogs: String = ""
 
     // Preview/editor state
     @Published var previewTargetFile: URL?

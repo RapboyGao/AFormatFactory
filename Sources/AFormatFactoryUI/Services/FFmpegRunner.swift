@@ -48,10 +48,6 @@ struct FFmpegRunner {
         didStartProcess: ((Process) -> Void)? = nil,
         logHandler: @escaping @Sendable (String) -> Void
     ) async throws {
-        let executable = try await ensureBundledFFmpeg(logHandler: logHandler)
-        let process = Process()
-        process.executableURL = executable
-
         let arguments = Self.commandArguments(
             input: input,
             output: output,
@@ -59,6 +55,21 @@ struct FFmpegRunner {
             overwriteExisting: overwriteExisting,
             extraArguments: extraArguments
         )
+        try await runCustom(
+            arguments: arguments,
+            didStartProcess: didStartProcess,
+            logHandler: logHandler
+        )
+    }
+
+    func runCustom(
+        arguments: [String],
+        didStartProcess: ((Process) -> Void)? = nil,
+        logHandler: @escaping @Sendable (String) -> Void
+    ) async throws {
+        let executable = try await ensureBundledFFmpeg(logHandler: logHandler)
+        let process = Process()
+        process.executableURL = executable
         process.arguments = arguments
 
         let outputPipe = Pipe()
@@ -79,7 +90,7 @@ struct FFmpegRunner {
         outputPipe.fileHandleForReading.readabilityHandler = nil
 
         guard process.terminationStatus == 0 else {
-            throw RunnerError.failed(code: process.terminationStatus, details: "\(input.lastPathComponent) -> \(output.lastPathComponent)")
+            throw RunnerError.failed(code: process.terminationStatus, details: arguments.joined(separator: " "))
         }
     }
 

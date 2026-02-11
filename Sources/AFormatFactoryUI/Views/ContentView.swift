@@ -7,6 +7,7 @@ public enum AppWindowID {
 enum WorkspaceSection: String, CaseIterable, Identifiable {
     case videoConvert
     case audioConvert
+    case mediaEdit
     case tasks
     case appLog
 
@@ -18,6 +19,8 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
             return "视频格式转换"
         case .audioConvert:
             return "音频格式转换"
+        case .mediaEdit:
+            return "媒体编辑"
         case .tasks:
             return "任务队列"
         case .appLog:
@@ -31,6 +34,8 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
             return "film.stack"
         case .audioConvert:
             return "waveform"
+        case .mediaEdit:
+            return "wand.and.stars"
         case .tasks:
             return "list.bullet.rectangle"
         case .appLog:
@@ -59,6 +64,8 @@ public struct ContentView: View {
                         ConversionWorkspaceView(viewModel: viewModel, selectedSection: $selectedSection, targetDomain: .video)
                     case .audioConvert:
                         ConversionWorkspaceView(viewModel: viewModel, selectedSection: $selectedSection, targetDomain: .audio)
+                    case .mediaEdit:
+                        MediaEditWorkspaceView(viewModel: viewModel)
                     case .tasks:
                         TaskWorkspaceView(viewModel: viewModel)
                     case .appLog:

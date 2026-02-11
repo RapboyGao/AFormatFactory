@@ -13,6 +13,11 @@ struct WorkspaceSidebarView: View {
                     .tag(WorkspaceSection.audioConvert)
             }
 
+            Section("媒体工具") {
+                Label(WorkspaceSection.mediaEdit.title, systemImage: WorkspaceSection.mediaEdit.symbol)
+                    .tag(WorkspaceSection.mediaEdit)
+            }
+
             Section("工作区") {
                 Label(WorkspaceSection.tasks.title, systemImage: WorkspaceSection.tasks.symbol)
                     .tag(WorkspaceSection.tasks)
