@@ -110,7 +110,7 @@ public struct ContentView: View {
 
             HStack(spacing: 10) {
                 Button("选择输入文件") { viewModel.pickInputFiles() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MaterialActionButtonStyle())
 
                 Picker("输出格式", selection: $viewModel.format) {
                     ForEach(viewModel.availableFormats) { format in
@@ -138,7 +138,7 @@ public struct ContentView: View {
 
                 if viewModel.outputLocationMode == .specifiedDirectory {
                     Button("选择输出目录") { viewModel.pickOutputDirectory() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(MaterialActionButtonStyle())
                 }
 
                 Spacer()
@@ -219,7 +219,7 @@ public struct ContentView: View {
                     selectedSection = .tasks
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(MaterialActionButtonStyle())
         }
         .padding(.horizontal, 4)
         .padding(.top, 2)
@@ -230,6 +230,7 @@ public struct ContentView: View {
             Text("高级参数")
                 .font(.system(size: 15, weight: .bold, design: .rounded))
 
+            sectionTitle("基础")
             HStack(spacing: 12) {
                 LabeledContent("参数预设") {
                     Picker("参数预设", selection: $viewModel.conversionPreset) {
@@ -243,137 +244,141 @@ public struct ContentView: View {
                 }
 
                 Toggle("覆盖同名文件", isOn: $viewModel.overwriteExistingFiles)
-                    .toggleStyle(.switch)
+                    .toggleStyle(MaterialToggleStyle())
                 Toggle("保留元数据", isOn: $viewModel.keepMetadata)
-                    .toggleStyle(.switch)
+                    .toggleStyle(MaterialToggleStyle())
                 Toggle("FastStart", isOn: $viewModel.enableFastStart)
-                    .toggleStyle(.switch)
+                    .toggleStyle(MaterialToggleStyle())
 
                 Spacer()
             }
 
             if viewModel.domain == .video {
-                HStack(spacing: 12) {
-                    LabeledContent("视频编码器") {
-                        Picker("视频编码器", selection: $viewModel.videoEncoder) {
-                            ForEach(viewModel.availableVideoEncoders) { encoder in
-                                Text(encoder.displayName).tag(encoder)
+                Divider().overlay(.white.opacity(0.18))
+                sectionTitle("视频参数")
+
+                HStack(spacing: 0) {
+                    HStack(alignment: .top, spacing: 12) {
+                        parameterField("视频编码器", width: 100) {
+                            Picker("视频编码器", selection: $viewModel.videoEncoder) {
+                                ForEach(viewModel.availableVideoEncoders) { encoder in
+                                    Text(encoder.displayName).tag(encoder)
+                                }
                             }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
                         }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .frame(width: 145)
-                    }
 
-                    LabeledContent("编码预设") {
-                        Picker("编码预设", selection: $viewModel.videoPreset) {
-                            ForEach(VideoPresetOption.allCases) { preset in
-                                Text(preset.displayName).tag(preset)
+                        parameterField("编码预设", width: 110) {
+                            Picker("编码预设", selection: $viewModel.videoPreset) {
+                                ForEach(VideoPresetOption.allCases) { preset in
+                                    Text(preset.displayName).tag(preset)
+                                }
                             }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
                         }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .frame(width: 110)
-                    }
 
-                    LabeledContent("分辨率") {
-                        Picker("分辨率", selection: $viewModel.videoScalePreset) {
-                            ForEach(VideoScalePreset.allCases) { scale in
-                                Text(scale.displayName).tag(scale)
+                        parameterField("分辨率", width: 100) {
+                            Picker("分辨率", selection: $viewModel.videoScalePreset) {
+                                ForEach(VideoScalePreset.allCases) { scale in
+                                    Text(scale.displayName).tag(scale)
+                                }
                             }
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                        .frame(width: 145)
-                    }
-
-                    Picker("视频码控", selection: $viewModel.videoRateControl) {
-                        ForEach(VideoRateControl.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
+                            .pickerStyle(.menu)
+                            .labelsHidden()
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 320)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Spacer()
+                sectionTitle("视频码控")
+                HStack(spacing: 0) {
+                    VideoRateControlSegmentedControl(selection: $viewModel.videoRateControl)
+                        .frame(width: 420, alignment: .leading)
+                    Spacer(minLength: 0)
                 }
 
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
                     if viewModel.videoRateControl == .constantQuality {
-                        HStack(spacing: 8) {
-                            Text("CRF")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                            Slider(value: $viewModel.videoCRF, in: 16...35, step: 1)
-                            Text("\(Int(viewModel.videoCRF))")
-                                .frame(width: 26, alignment: .trailing)
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        parameterField("CRF", width: 300) {
+                            HStack(spacing: 8) {
+                                Slider(value: $viewModel.videoCRF, in: 16...35, step: 1)
+                                Text("\(Int(viewModel.videoCRF))")
+                                    .frame(width: 26, alignment: .trailing)
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            }
                         }
-                        .frame(maxWidth: 300)
                     } else {
-                        LabeledContent("视频码率(kbps)") {
+                        parameterField("视频码率(kbps)", width: 110) {
                             TextField("2500", text: $viewModel.videoBitrateKbps)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(width: 110)
                         }
                     }
 
-                    LabeledContent("帧率") {
+                    parameterField("帧率", width: 110) {
                         TextField("留空=原始", text: $viewModel.videoFrameRate)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 110)
                     }
 
-                    Spacer()
-                }
-
-                HStack(spacing: 12) {
-                    LabeledContent("GOP") {
-                        TextField("如 60", text: $viewModel.videoGOP)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 90)
-                    }
-                    LabeledContent("像素格式") {
-                        TextField("yuv420p", text: $viewModel.videoPixelFormat)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 110)
-                    }
-                    LabeledContent("Profile") {
-                        TextField("high/main", text: $viewModel.videoProfile)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 100)
-                    }
-                    LabeledContent("Level") {
-                        TextField("4.1", text: $viewModel.videoLevel)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 70)
-                    }
-                    LabeledContent("Tune") {
-                        TextField("film/animation", text: $viewModel.videoTune)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 130)
-                    }
-                    Toggle("去隔行", isOn: $viewModel.enableDeinterlace)
-                        .toggleStyle(.switch)
-                    Spacer()
-                }
-
-                HStack(spacing: 12) {
-                    LabeledContent("最大码率(kbps)") {
+                    parameterField("最大码率(kbps)", width: 100) {
                         TextField("选填", text: $viewModel.videoMaxBitrateKbps)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 100)
                     }
-                    LabeledContent("缓冲(kbps)") {
+
+                    parameterField("缓冲(kbps)", width: 100) {
                         TextField("选填", text: $viewModel.videoBufferSizeKbps)
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 100)
+                    }
+
+                    Spacer()
+                }
+
+                HStack(alignment: .top, spacing: 12) {
+                    parameterField("GOP", width: 90) {
+                        TextField("如 60", text: $viewModel.videoGOP)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 90)
+                    }
+                    parameterField("像素格式", width: 110) {
+                        TextField("yuv420p", text: $viewModel.videoPixelFormat)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 110)
+                    }
+                    parameterField("Profile", width: 100) {
+                        TextField("high/main", text: $viewModel.videoProfile)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                    }
+                    parameterField("Level", width: 70) {
+                        TextField("4.1", text: $viewModel.videoLevel)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 70)
+                    }
+                    parameterField("Tune", width: 130) {
+                        TextField("film/animation", text: $viewModel.videoTune)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 130)
+                    }
+                    parameterField("去隔行", width: 80) {
+                        Toggle("", isOn: $viewModel.enableDeinterlace)
+                            .toggleStyle(MaterialToggleStyle())
+                            .labelsHidden()
                     }
                     Spacer()
                 }
             }
 
-            HStack(spacing: 12) {
-                LabeledContent("音频编码器") {
+            Divider().overlay(.white.opacity(0.18))
+            sectionTitle("音频参数")
+
+            HStack(alignment: .top, spacing: 12) {
+                parameterField("音频编码器", width: 130) {
                     Picker("音频编码器", selection: $viewModel.audioCodec) {
                         ForEach(AudioCodecOption.allCases) { codec in
                             Text(codec.displayName).tag(codec)
@@ -384,19 +389,19 @@ public struct ContentView: View {
                     .frame(width: 130)
                 }
 
-                LabeledContent("音频码率(kbps)") {
+                parameterField("音频码率(kbps)", width: 120) {
                     TextField("192", text: $viewModel.audioBitrateKbps)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
+                        .frame(width: 120)
                 }
 
-                LabeledContent("采样率(Hz)") {
+                parameterField("采样率(Hz)", width: 120) {
                     TextField("44100", text: $viewModel.audioSampleRate)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 100)
+                        .frame(width: 120)
                 }
 
-                LabeledContent("声道") {
+                parameterField("声道", width: 70) {
                     Stepper(value: $viewModel.audioChannels, in: 1...8) {
                         Text("\(viewModel.audioChannels)")
                             .font(.system(size: 13, weight: .bold, design: .monospaced))
@@ -405,23 +410,29 @@ public struct ContentView: View {
                     .frame(width: 70)
                 }
 
-                LabeledContent("VBR质量") {
+                parameterField("VBR质量", width: 80) {
                     TextField("0~9", text: $viewModel.audioVBRQuality)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 70)
+                        .frame(width: 80)
                 }
 
-                LabeledContent("音量(dB)") {
+                parameterField("音量(dB)", width: 105) {
                     TextField("如 -3 / 2.5", text: $viewModel.audioVolumeDB)
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 95)
+                        .frame(width: 105)
                 }
 
-                Toggle("响度标准化", isOn: $viewModel.enableLoudnorm)
-                    .toggleStyle(.switch)
+                parameterField("响度标准化", width: 92) {
+                    Toggle("", isOn: $viewModel.enableLoudnorm)
+                        .toggleStyle(MaterialToggleStyle())
+                        .labelsHidden()
+                }
 
                 Spacer()
             }
+
+            Divider().overlay(.white.opacity(0.18))
+            sectionTitle("专家参数")
 
             HStack(spacing: 12) {
                 LabeledContent("开始时间") {
@@ -453,6 +464,24 @@ public struct ContentView: View {
         .padding(.vertical, 2)
     }
 
+    private func sectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.78))
+            .textCase(.uppercase)
+    }
+
+    private func parameterField<Content: View>(_ title: String, width: CGFloat, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.82))
+                .lineLimit(1)
+            content()
+        }
+        .frame(width: width, alignment: .leading)
+    }
+
     private var taskWorkspace: some View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
@@ -465,11 +494,11 @@ public struct ContentView: View {
                     Button(viewModel.isProcessingQueue ? "执行中..." : "开始队列") {
                         Task { await viewModel.startQueuedTasks() }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MaterialActionButtonStyle())
                     .disabled(viewModel.isProcessingQueue)
 
                     Button("清理已完成") { viewModel.clearFinishedTasks() }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(MaterialActionButtonStyle())
 
                     Stepper(value: $viewModel.maxConcurrentTasks, in: 1...8) {
                         Text("并发 \(viewModel.maxConcurrentTasks)")
@@ -575,6 +604,102 @@ public struct ContentView: View {
         case .failed:
             return .red
         }
+    }
+}
+
+private struct MaterialActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 13, weight: .semibold, design: .rounded))
+            .padding(.vertical, 7)
+            .padding(.horizontal, 12)
+            .foregroundStyle(.white.opacity(isEnabled ? 0.95 : 0.45))
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.thinMaterial.opacity(configuration.isPressed ? 0.45 : 0.72))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(isEnabled ? 0.18 : 0.08), lineWidth: 1)
+            )
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private struct MaterialToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            HStack(spacing: 8) {
+                configuration.label
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(.thinMaterial.opacity(0.7))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        )
+                        .frame(width: 40, height: 22)
+
+                    Circle()
+                        .fill(Color.white.opacity(0.95))
+                        .frame(width: 16, height: 16)
+                        .padding(.horizontal, 3)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct VideoRateControlSegmentedControl: View {
+    @Binding var selection: VideoRateControl
+
+    var body: some View {
+        HStack(spacing: 6) {
+            segmentButton(.constantQuality)
+            segmentButton(.targetBitrate)
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.thinMaterial.opacity(0.35))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
+    }
+
+    private func segmentButton(_ option: VideoRateControl) -> some View {
+        let selected = selection == option
+        return Button {
+            selection = option
+        } label: {
+            Text(option.displayName)
+                .lineLimit(1)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity)
+                .foregroundStyle(.white.opacity(selected ? 0.98 : 0.82))
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(.thinMaterial.opacity(selected ? 0.85 : 0.35))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(Color.white.opacity(selected ? 0.24 : 0.1), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
