@@ -1,9 +1,14 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 @MainActor
 final class ContentViewModel: ObservableObject {
-    @Published var selectedFiles: [URL] = []
+    @Published var domain: ConversionDomain = .video {
+        didSet { ensureFormatMatchesDomain() }
+    }
+    @Published private(set) var selectedVideoFiles: [URL] = []
+    @Published private(set) var selectedAudioFiles: [URL] = []
     @Published var outputDirectory: URL?
     @Published var format: ConversionFormat = .mp4
     @Published var isConverting = false
@@ -11,16 +16,29 @@ final class ContentViewModel: ObservableObject {
 
     private let runner = FFmpegRunner()
 
+    var selectedFiles: [URL] {
+        domain == .video ? selectedVideoFiles : selectedAudioFiles
+    }
+
+    var availableFormats: [ConversionFormat] {
+        ConversionFormat.formats(for: domain)
+    }
+
     func pickInputFiles() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = []
+        panel.allowedContentTypes = supportedInputTypes(for: domain)
 
         if panel.runModal() == .OK {
-            selectedFiles = panel.urls
-            appendLog("已选择 \(selectedFiles.count) 个文件。")
+            switch domain {
+            case .video:
+                selectedVideoFiles = panel.urls
+            case .audio:
+                selectedAudioFiles = panel.urls
+            }
+            appendLog("\(domain.displayName)：已选择 \(selectedFiles.count) 个文件。")
         }
     }
 
@@ -37,7 +55,8 @@ final class ContentViewModel: ObservableObject {
     }
 
     func startConversion() async {
-        guard !selectedFiles.isEmpty else {
+        let files = selectedFiles
+        guard !files.isEmpty else {
             appendLog("请先选择输入文件。")
             return
         }
@@ -50,9 +69,9 @@ final class ContentViewModel: ObservableObject {
         isConverting = true
         defer { isConverting = false }
 
-        for (index, file) in selectedFiles.enumerated() {
+        for (index, file) in files.enumerated() {
             let output = outputURL(for: file, in: outputDirectory)
-            appendLog("[\(index + 1)/\(selectedFiles.count)] 开始：\(file.lastPathComponent)")
+            appendLog("[\(index + 1)/\(files.count)] 开始：\(file.lastPathComponent)")
 
             do {
                 try await runner.transcode(input: file, output: output, format: format) { [weak self] message in
@@ -67,6 +86,29 @@ final class ContentViewModel: ObservableObject {
         }
 
         appendLog("全部任务结束。")
+    }
+
+    private func ensureFormatMatchesDomain() {
+        if format.domain != domain, let fallback = availableFormats.first {
+            format = fallback
+        }
+    }
+
+    private func supportedInputTypes(for domain: ConversionDomain) -> [UTType] {
+        let extensions: [String]
+        switch domain {
+        case .video:
+            extensions = [
+                "mp4", "mov", "mkv", "m4v", "avi", "wmv", "flv", "webm",
+                "mpeg", "mpg", "ts", "m2ts", "mts", "vob", "ogv", "3gp"
+            ]
+        case .audio:
+            extensions = [
+                "mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "aif",
+                "aiff", "caf", "wma", "amr", "mka", "ac3"
+            ]
+        }
+        return extensions.compactMap { UTType(filenameExtension: $0) }
     }
 
     private func outputURL(for file: URL, in outputDirectory: URL) -> URL {

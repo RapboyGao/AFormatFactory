@@ -7,11 +7,17 @@ let package = Package(
         .macOS(.v13)
     ],
     products: [
+        .library(name: "AFormatFactoryUI", targets: ["AFormatFactoryUI"]),
         .executable(name: "AFormatFactory", targets: ["AFormatFactoryApp"])
     ],
     targets: [
+        .target(
+            name: "AFormatFactoryUI",
+            path: "Sources/AFormatFactoryUI"
+        ),
         .executableTarget(
             name: "AFormatFactoryApp",
+            dependencies: ["AFormatFactoryUI"],
             path: "Sources/AFormatFactoryApp",
             exclude: ["Info.plist"],
             linkerSettings: [

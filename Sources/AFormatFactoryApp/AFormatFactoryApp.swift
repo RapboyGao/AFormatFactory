@@ -1,4 +1,5 @@
 import SwiftUI
+import AFormatFactoryUI
 
 @main
 struct AFormatFactoryApp: App {

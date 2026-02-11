@@ -1,13 +1,22 @@
 import SwiftUI
 
-struct ContentView: View {
+public struct ContentView: View {
     @StateObject private var viewModel = ContentViewModel()
 
-    var body: some View {
+    public init() {}
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("AFormatFactory")
                 .font(.largeTitle)
                 .bold()
+
+            Picker("功能区", selection: $viewModel.domain) {
+                ForEach(ConversionDomain.allCases) { domain in
+                    Text(domain.displayName).tag(domain)
+                }
+            }
+            .pickerStyle(.segmented)
 
             HStack(spacing: 12) {
                 Button("选择输入文件") {
@@ -19,7 +28,7 @@ struct ContentView: View {
                 }
 
                 Picker("输出格式", selection: $viewModel.format) {
-                    ForEach(ConversionFormat.allCases) { format in
+                    ForEach(viewModel.availableFormats) { format in
                         Text(format.displayName).tag(format)
                     }
                 }
@@ -35,7 +44,7 @@ struct ContentView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("输入文件（\(viewModel.selectedFiles.count)）")
+                Text("\(viewModel.domain.displayName) 输入文件（\(viewModel.selectedFiles.count)）")
                     .font(.headline)
                 List(viewModel.selectedFiles, id: \.self) { url in
                     Text(url.path)
@@ -72,4 +81,9 @@ struct ContentView: View {
         }
         .padding(20)
     }
+}
+
+#Preview {
+    ContentView()
+        .frame(width: 860, height: 560)
 }
