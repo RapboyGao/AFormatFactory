@@ -231,6 +231,8 @@ struct ConversionTask: Identifiable {
 
 @MainActor
 final class ContentViewModel: ObservableObject {
+    static let defaultConcurrentTaskCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
+
     @Published var domain: ConversionDomain = .video {
         didSet { ensureFormatMatchesDomain() }
     }
@@ -284,7 +286,7 @@ final class ContentViewModel: ObservableObject {
     // Queue controls
     @Published var tasks: [ConversionTask] = []
     @Published var selectedTaskID: UUID?
-    @Published var maxConcurrentTasks: Int = 2
+    @Published var maxConcurrentTasks: Int = ContentViewModel.defaultConcurrentTaskCount
     @Published var isProcessingQueue = false
     @Published var appLogs = ""
 
@@ -309,5 +311,9 @@ final class ContentViewModel: ObservableObject {
     var selectedTask: ConversionTask? {
         guard let selectedTaskID else { return nil }
         return tasks.first(where: { $0.id == selectedTaskID })
+    }
+
+    var maxConcurrentTaskLimit: Int {
+        max(1, ProcessInfo.processInfo.activeProcessorCount)
     }
 }

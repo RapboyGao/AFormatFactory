@@ -39,6 +39,17 @@ actor AsyncSemaphore {
 }
 
 extension ContentViewModel {
+    func commandText(for task: ConversionTask) -> String {
+        let args = FFmpegRunner.commandArguments(
+            input: task.inputURL,
+            output: task.outputURL,
+            format: task.format,
+            overwriteExisting: task.overwriteExisting,
+            extraArguments: task.extraArguments
+        )
+        return FFmpegRunner.commandString(arguments: args)
+    }
+
     func removeSelectedTask() {
         guard let selectedTaskID else { return }
         removeTask(id: selectedTaskID)

@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 struct TaskWorkspaceView: View {
     @ObservedObject var viewModel: ContentViewModel
+    @State private var commandPreviewTask: ConversionTask?
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -27,7 +29,7 @@ struct TaskWorkspaceView: View {
                         .buttonStyle(MaterialActionButtonStyle())
                         .disabled(viewModel.selectedTaskID == nil || viewModel.isProcessingQueue)
 
-                    Stepper(value: $viewModel.maxConcurrentTasks, in: 1...8) {
+                    Stepper(value: $viewModel.maxConcurrentTasks, in: 1...viewModel.maxConcurrentTaskLimit) {
                         Text("并发 \(viewModel.maxConcurrentTasks)")
                             .font(.system(size: 13, weight: .semibold, design: .rounded))
                             .foregroundStyle(.white.opacity(0.85))
@@ -56,6 +58,14 @@ struct TaskWorkspaceView: View {
                                     .foregroundStyle(.white.opacity(0.65))
                                     .lineLimit(1)
                             }
+
+                            Spacer(minLength: 8)
+
+                            Button("命令") {
+                                commandPreviewTask = task
+                            }
+                            .buttonStyle(.borderless)
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                         }
                         .tag(task.id)
                     }
@@ -87,6 +97,9 @@ struct TaskWorkspaceView: View {
             }
             .frame(maxWidth: .infinity)
             .cardStyle(padding: 12)
+        }
+        .sheet(item: $commandPreviewTask) { task in
+            commandPreviewSheet(task: task)
         }
     }
 
@@ -124,5 +137,39 @@ struct TaskWorkspaceView: View {
 
     private func count(for status: ConversionTaskStatus) -> Int {
         viewModel.tasks.filter { $0.status == status }.count
+    }
+
+    @ViewBuilder
+    private func commandPreviewSheet(task: ConversionTask) -> some View {
+        let command = viewModel.commandText(for: task)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("任务命令")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+            Text(task.inputURL.lastPathComponent)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+
+            ScrollView {
+                Text(command)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+            }
+            .background(Color.black.opacity(0.2))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            HStack {
+                Spacer()
+                Button("复制命令") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                }
+                .buttonStyle(MaterialActionButtonStyle())
+            }
+        }
+        .padding(14)
+        .frame(minWidth: 760, minHeight: 280)
+        .background(.ultraThinMaterial)
     }
 }

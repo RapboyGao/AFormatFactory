@@ -15,6 +15,30 @@ struct FFmpegRunner {
         }
     }
 
+    static func commandArguments(
+        input: URL,
+        output: URL,
+        format: ConversionFormat,
+        overwriteExisting: Bool,
+        extraArguments: [String]
+    ) -> [String] {
+        let overwriteFlag = overwriteExisting ? "-y" : "-n"
+        return [overwriteFlag, "-i", input.path] + format.extraArguments + extraArguments + [output.path]
+    }
+
+    static func commandString(executable: String = "ffmpeg", arguments: [String]) -> String {
+        ([executable] + arguments).map { shellEscaped($0) }.joined(separator: " ")
+    }
+
+    private static func shellEscaped(_ value: String) -> String {
+        if value.isEmpty { return "''" }
+        if value.rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines.union(.init(charactersIn: "'\"\\$`!"))) == nil {
+            return value
+        }
+        let escaped = value.replacingOccurrences(of: "'", with: "'\\''")
+        return "'\(escaped)'"
+    }
+
     func transcode(
         input: URL,
         output: URL,
@@ -27,8 +51,13 @@ struct FFmpegRunner {
         let process = Process()
         process.executableURL = executable
 
-        let overwriteFlag = overwriteExisting ? "-y" : "-n"
-        let arguments = [overwriteFlag, "-i", input.path] + format.extraArguments + extraArguments + [output.path]
+        let arguments = Self.commandArguments(
+            input: input,
+            output: output,
+            format: format,
+            overwriteExisting: overwriteExisting,
+            extraArguments: extraArguments
+        )
         process.arguments = arguments
 
         let outputPipe = Pipe()
