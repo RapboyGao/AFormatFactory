@@ -13,15 +13,22 @@ final class ContentViewModel: ObservableObject {
     @Published var format: ConversionFormat = .mp4
     @Published var isConverting = false
     @Published var logs = ""
+    @Published private(set) var supportedFormats: Set<ConversionFormat> = Set(ConversionFormat.allCases)
 
     private let runner = FFmpegRunner()
+
+    init() {
+        Task {
+            await refreshSupportedFormats()
+        }
+    }
 
     var selectedFiles: [URL] {
         domain == .video ? selectedVideoFiles : selectedAudioFiles
     }
 
     var availableFormats: [ConversionFormat] {
-        ConversionFormat.formats(for: domain)
+        ConversionFormat.formats(for: domain).filter { supportedFormats.contains($0) }
     }
 
     func pickInputFiles() {
@@ -91,6 +98,22 @@ final class ContentViewModel: ObservableObject {
     private func ensureFormatMatchesDomain() {
         if format.domain != domain, let fallback = availableFormats.first {
             format = fallback
+        }
+    }
+
+    private func refreshSupportedFormats() async {
+        do {
+            let capabilities = try await runner.detectCapabilities()
+            let supported = Set(ConversionFormat.allCases.filter { $0.isSupported(by: capabilities) })
+            if supported.isEmpty {
+                appendLog("警告：未探测到可用格式，已保留默认列表。")
+                return
+            }
+            supportedFormats = supported
+            ensureFormatMatchesDomain()
+            appendLog("已按内置 ffmpeg 能力过滤格式，当前可用 \(supported.count) 项。")
+        } catch {
+            appendLog("读取 ffmpeg 支持格式失败：\(error.localizedDescription)")
         }
     }
 

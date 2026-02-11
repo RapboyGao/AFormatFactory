@@ -16,6 +16,11 @@ enum ConversionDomain: String, CaseIterable, Identifiable {
     }
 }
 
+struct FFmpegCapabilities {
+    let muxers: Set<String>
+    let encoders: Set<String>
+}
+
 enum ConversionFormat: String, CaseIterable, Identifiable {
     case mp4
     case mov
@@ -81,6 +86,117 @@ enum ConversionFormat: String, CaseIterable, Identifiable {
 
     static func formats(for domain: ConversionDomain) -> [ConversionFormat] {
         allCases.filter { $0.domain == domain }
+    }
+
+    func isSupported(by capabilities: FFmpegCapabilities) -> Bool {
+        guard capabilities.muxers.contains(requiredMuxer) else { return false }
+
+        if let video = requiredVideoEncoders {
+            guard video.contains(where: capabilities.encoders.contains) else { return false }
+        }
+
+        if let audio = requiredAudioEncoders {
+            guard audio.contains(where: capabilities.encoders.contains) else { return false }
+        }
+
+        return true
+    }
+
+    private var requiredMuxer: String {
+        switch self {
+        case .mp4:
+            return "mp4"
+        case .mov:
+            return "mov"
+        case .mkv:
+            return "matroska"
+        case .webm:
+            return "webm"
+        case .avi:
+            return "avi"
+        case .flv:
+            return "flv"
+        case .m4v:
+            return "mp4"
+        case .ts:
+            return "mpegts"
+        case .mpeg:
+            return "mpeg"
+        case .ogv:
+            return "ogv"
+        case .`3gp`:
+            return "3gp"
+        case .mp3:
+            return "mp3"
+        case .wav:
+            return "wav"
+        case .m4a, .alac:
+            return "ipod"
+        case .aac:
+            return "adts"
+        case .flac:
+            return "flac"
+        case .ogg:
+            return "ogg"
+        case .opus:
+            return "opus"
+        case .aiff:
+            return "aiff"
+        case .wma:
+            return "asf"
+        case .gif:
+            return "gif"
+        }
+    }
+
+    private var requiredVideoEncoders: [String]? {
+        switch self {
+        case .mp4, .mov, .mkv, .m4v, .ts:
+            return ["libx264", "h264_videotoolbox", "mpeg4"]
+        case .webm:
+            return ["libvpx-vp9", "vp9", "libvpx"]
+        case .avi:
+            return ["mpeg4"]
+        case .flv:
+            return ["flv"]
+        case .mpeg:
+            return ["mpeg2video"]
+        case .ogv:
+            return ["libtheora", "theora"]
+        case .`3gp`:
+            return ["h263", "mpeg4"]
+        case .gif:
+            return ["gif"]
+        default:
+            return nil
+        }
+    }
+
+    private var requiredAudioEncoders: [String]? {
+        switch self {
+        case .mp4, .mov, .mkv, .m4v, .ts, .`3gp`, .m4a, .aac:
+            return ["aac", "aac_at"]
+        case .webm, .opus:
+            return ["libopus", "opus"]
+        case .avi, .flv, .mp3:
+            return ["libmp3lame"]
+        case .mpeg:
+            return ["mp2", "mp2fixed"]
+        case .ogv, .ogg:
+            return ["libvorbis", "vorbis"]
+        case .wav:
+            return ["pcm_s16le"]
+        case .flac:
+            return ["flac"]
+        case .aiff:
+            return ["pcm_s16be"]
+        case .wma:
+            return ["wmav2"]
+        case .alac:
+            return ["alac", "alac_at"]
+        case .gif:
+            return nil
+        }
     }
 
     var extraArguments: [String] {

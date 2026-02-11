@@ -94,6 +94,16 @@ struct FFmpegRunner {
         }
     }
 
+    func detectCapabilities() async throws -> FFmpegCapabilities {
+        let ffmpegURL = try await ensureBundledFFmpeg(logHandler: { _ in })
+        let muxersOutput = try runAndCapture(executable: ffmpegURL, arguments: ["-hide_banner", "-muxers"])
+        let encodersOutput = try runAndCapture(executable: ffmpegURL, arguments: ["-hide_banner", "-encoders"])
+        return FFmpegCapabilities(
+            muxers: parseMuxers(from: muxersOutput),
+            encoders: parseEncoders(from: encodersOutput)
+        )
+    }
+
     private func bundledFFmpegURL() -> URL {
         let bundleURL = Bundle.main.bundleURL
         if bundleURL.pathExtension == "app" {
@@ -120,6 +130,57 @@ struct FFmpegRunner {
             let message = String(data: data, encoding: .utf8) ?? "unzip error"
             throw RunnerError.ffmpegDownloadFailed(reason: message.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+    }
+
+    private func runAndCapture(executable: URL, arguments: [String]) throws -> String {
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = arguments
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        try process.run()
+        process.waitUntilExit()
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard let output = String(data: data, encoding: .utf8) else {
+            throw RunnerError.ffmpegDownloadFailed(reason: "无法解析 ffmpeg 输出。")
+        }
+        guard process.terminationStatus == 0 else {
+            throw RunnerError.ffmpegDownloadFailed(reason: "读取 ffmpeg 能力失败。")
+        }
+        return output
+    }
+
+    private func parseMuxers(from output: String) -> Set<String> {
+        var result = Set<String>()
+        for line in output.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.contains(" E ") || trimmed.hasPrefix("E ") || trimmed.hasPrefix("Ed ") else {
+                continue
+            }
+            let fields = trimmed.split(whereSeparator: \.isWhitespace)
+            guard fields.count >= 2 else { continue }
+            let rawName = String(fields[1])
+            let primaryName = rawName.split(separator: ",").first.map(String.init) ?? rawName
+            result.insert(primaryName.lowercased())
+        }
+        return result
+    }
+
+    private func parseEncoders(from output: String) -> Set<String> {
+        var result = Set<String>()
+        for line in output.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            guard let first = trimmed.first, first == "V" || first == "A" else { continue }
+            let fields = trimmed.split(whereSeparator: \.isWhitespace)
+            guard fields.count >= 2 else { continue }
+            result.insert(String(fields[1]).lowercased())
+        }
+        return result
     }
 
     private func ffmpegDownloadURL() throws -> URL {
