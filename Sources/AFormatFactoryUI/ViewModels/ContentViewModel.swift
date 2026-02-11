@@ -1,6 +1,6 @@
 import Foundation
 
-enum VideoRateControl: String, CaseIterable, Identifiable {
+enum VideoRateControl: String, CaseIterable, Identifiable, Codable {
     case constantQuality
     case targetBitrate
 
@@ -16,7 +16,7 @@ enum VideoRateControl: String, CaseIterable, Identifiable {
     }
 }
 
-enum ConversionPreset: String, CaseIterable, Identifiable {
+enum ConversionPreset: String, CaseIterable, Identifiable, Codable {
     case highQuality
     case balanced
     case smallSize
@@ -35,7 +35,7 @@ enum ConversionPreset: String, CaseIterable, Identifiable {
     }
 }
 
-enum VideoEncoderOption: String, CaseIterable, Identifiable {
+enum VideoEncoderOption: String, CaseIterable, Identifiable, Codable {
     case auto
     case h264
     case h265
@@ -57,7 +57,7 @@ enum VideoEncoderOption: String, CaseIterable, Identifiable {
     }
 }
 
-enum VideoScalePreset: String, CaseIterable, Identifiable {
+enum VideoScalePreset: String, CaseIterable, Identifiable, Codable {
     case source
     case p2160
     case p1440
@@ -102,7 +102,7 @@ enum VideoScalePreset: String, CaseIterable, Identifiable {
     }
 }
 
-enum VideoPresetOption: String, CaseIterable, Identifiable {
+enum VideoPresetOption: String, CaseIterable, Identifiable, Codable {
     case none
     case ultrafast
     case superfast
@@ -121,7 +121,29 @@ enum VideoPresetOption: String, CaseIterable, Identifiable {
     }
 }
 
-enum AudioCodecOption: String, CaseIterable, Identifiable {
+enum VideoRotateOption: String, CaseIterable, Identifiable, Codable {
+    case none
+    case clockwise90
+    case counterClockwise90
+    case rotate180
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none:
+            return "不旋转"
+        case .clockwise90:
+            return "顺时针90°"
+        case .counterClockwise90:
+            return "逆时针90°"
+        case .rotate180:
+            return "180°"
+        }
+    }
+}
+
+enum AudioCodecOption: String, CaseIterable, Identifiable, Codable {
     case auto
     case aac
     case mp3
@@ -272,6 +294,13 @@ final class ContentViewModel: ObservableObject {
     @Published var videoBufferSizeKbps: String = ""
     @Published var videoFrameRate: String = ""
     @Published var enableDeinterlace = false
+    @Published var videoRotate: VideoRotateOption = .none
+    @Published var videoFlipHorizontal = false
+    @Published var videoFlipVertical = false
+    @Published var videoCropWidth: String = ""
+    @Published var videoCropHeight: String = ""
+    @Published var videoCropX: String = ""
+    @Published var videoCropY: String = ""
 
     // Audio advanced settings
     @Published var copyAudioStream = false
@@ -282,6 +311,10 @@ final class ContentViewModel: ObservableObject {
     @Published var audioVolumeDB: String = ""
     @Published var audioVBRQuality: String = ""
     @Published var enableLoudnorm = false
+    @Published var loudnormIntegratedTarget: String = "-16"
+    @Published var loudnormLraTarget: String = "11"
+    @Published var loudnormTruePeakTarget: String = "-1.5"
+    @Published var selectedAudioTrackIndex: String = ""
 
     // General expert settings
     @Published var keepMetadata = true

@@ -17,6 +17,11 @@ struct ParameterEditorView: View {
                 .pickerStyle(.menu)
                 .labelsHidden()
                 .frame(width: 150)
+
+                Button("加载模板") { viewModel.loadParameterTemplate() }
+                    .buttonStyle(MaterialActionButtonStyle())
+                Button("保存模板") { viewModel.saveParameterTemplate() }
+                    .buttonStyle(MaterialActionButtonStyle())
             }
 
             sectionTitle("基础")
@@ -27,6 +32,11 @@ struct ParameterEditorView: View {
                     .toggleStyle(MaterialToggleStyle())
                 Toggle("FastStart", isOn: $viewModel.enableFastStart)
                     .toggleStyle(MaterialToggleStyle())
+                parameterField("音轨索引", width: 90) {
+                    TextField("默认", text: $viewModel.selectedAudioTrackIndex)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 90)
+                }
 
                 Spacer()
             }
@@ -206,6 +216,49 @@ struct ParameterEditorView: View {
                         }
                         Spacer()
                     }
+
+                    HStack(alignment: .top, spacing: 12) {
+                        parameterField("旋转", width: 110) {
+                            Picker("旋转", selection: $viewModel.videoRotate) {
+                                ForEach(VideoRotateOption.allCases) { option in
+                                    Text(option.displayName).tag(option)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .labelsHidden()
+                        }
+                        parameterField("水平翻转", width: 80) {
+                            Toggle("", isOn: $viewModel.videoFlipHorizontal)
+                                .toggleStyle(MaterialToggleStyle())
+                                .labelsHidden()
+                        }
+                        parameterField("垂直翻转", width: 80) {
+                            Toggle("", isOn: $viewModel.videoFlipVertical)
+                                .toggleStyle(MaterialToggleStyle())
+                                .labelsHidden()
+                        }
+                        parameterField("裁剪宽", width: 80) {
+                            TextField("选填", text: $viewModel.videoCropWidth)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                        }
+                        parameterField("裁剪高", width: 80) {
+                            TextField("选填", text: $viewModel.videoCropHeight)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                        }
+                        parameterField("裁剪X", width: 70) {
+                            TextField("0", text: $viewModel.videoCropX)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 70)
+                        }
+                        parameterField("裁剪Y", width: 70) {
+                            TextField("0", text: $viewModel.videoCropY)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 70)
+                        }
+                        Spacer()
+                    }
                 }
             }
 
@@ -282,6 +335,27 @@ struct ParameterEditorView: View {
                     }
 
                     Spacer()
+                }
+
+                if viewModel.enableLoudnorm {
+                    HStack(alignment: .top, spacing: 12) {
+                        parameterField("目标I (LUFS)", width: 110) {
+                            TextField("-16", text: $viewModel.loudnormIntegratedTarget)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 110)
+                        }
+                        parameterField("目标LRA", width: 90) {
+                            TextField("11", text: $viewModel.loudnormLraTarget)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 90)
+                        }
+                        parameterField("目标TP (dB)", width: 110) {
+                            TextField("-1.5", text: $viewModel.loudnormTruePeakTarget)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 110)
+                        }
+                        Spacer()
+                    }
                 }
             }
 

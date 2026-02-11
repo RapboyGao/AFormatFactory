@@ -46,6 +46,14 @@ extension ContentViewModel {
         var videoFilters: [String] = []
         var audioFilters: [String] = []
 
+        if let audioTrack = parsedNonNegativeInt(selectedAudioTrackIndex) {
+            if domain == .video {
+                args += ["-map", "0:v?", "-map", "0:a:\(audioTrack)", "-map", "0:s?"]
+            } else {
+                args += ["-map", "0:a:\(audioTrack)"]
+            }
+        }
+
         if let ss = parsedTimeValue(startTime) {
             args += ["-ss", ss]
         }
@@ -111,6 +119,32 @@ extension ContentViewModel {
             if !copyVideoStream, enableDeinterlace {
                 videoFilters.append("yadif")
             }
+            if !copyVideoStream {
+                switch videoRotate {
+                case .none:
+                    break
+                case .clockwise90:
+                    videoFilters.append("transpose=1")
+                case .counterClockwise90:
+                    videoFilters.append("transpose=2")
+                case .rotate180:
+                    videoFilters.append("transpose=2,transpose=2")
+                }
+                if videoFlipHorizontal {
+                    videoFilters.append("hflip")
+                }
+                if videoFlipVertical {
+                    videoFilters.append("vflip")
+                }
+                if
+                    let cropW = parsedPositiveInt(videoCropWidth),
+                    let cropH = parsedPositiveInt(videoCropHeight)
+                {
+                    let cropX = parsedNonNegativeInt(videoCropX) ?? 0
+                    let cropY = parsedNonNegativeInt(videoCropY) ?? 0
+                    videoFilters.append("crop=\(cropW):\(cropH):\(cropX):\(cropY)")
+                }
+            }
         }
 
         if format != .gif {
@@ -136,7 +170,12 @@ extension ContentViewModel {
                     audioFilters.append("volume=\(String(format: "%.2f", vol))dB")
                 }
                 if enableLoudnorm {
-                    audioFilters.append("loudnorm=I=-16:LRA=11:TP=-1.5")
+                    let i = parsedBoundedDouble(loudnormIntegratedTarget, min: -70, max: -5) ?? -16
+                    let lra = parsedBoundedDouble(loudnormLraTarget, min: 1, max: 20) ?? 11
+                    let tp = parsedBoundedDouble(loudnormTruePeakTarget, min: -9, max: 0) ?? -1.5
+                    audioFilters.append(
+                        "loudnorm=I=\(String(format: "%.1f", i)):LRA=\(String(format: "%.1f", lra)):TP=\(String(format: "%.1f", tp))"
+                    )
                 }
             }
         }
@@ -202,6 +241,12 @@ extension ContentViewModel {
                 if !videoFrameRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     segments.append("FPS=\(videoFrameRate)")
                 }
+                if videoRotate != .none {
+                    segments.append("旋转=\(videoRotate.displayName)")
+                }
+                if videoFlipHorizontal || videoFlipVertical {
+                    segments.append("翻转=\(videoFlipHorizontal ? "H" : "")\(videoFlipVertical ? "V" : "")")
+                }
             }
         }
 
@@ -213,7 +258,13 @@ extension ContentViewModel {
                 segments.append("音频码率=\(audioBitrateKbps)kbps")
                 segments.append("采样率=\(audioSampleRate)")
                 segments.append("声道=\(audioChannels)")
+                if enableLoudnorm {
+                    segments.append("响度=\(loudnormIntegratedTarget)/\(loudnormLraTarget)/\(loudnormTruePeakTarget)")
+                }
             }
+        }
+        if !selectedAudioTrackIndex.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            segments.append("音轨=\(selectedAudioTrackIndex)")
         }
 
         return segments.joined(separator: " | ")
@@ -253,6 +304,12 @@ extension ContentViewModel {
     private func parsedPositiveInt(_ value: String) -> Int? {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let intValue = Int(trimmed), intValue > 0 else { return nil }
+        return intValue
+    }
+
+    private func parsedNonNegativeInt(_ value: String) -> Int? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let intValue = Int(trimmed), intValue >= 0 else { return nil }
         return intValue
     }
 
