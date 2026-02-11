@@ -83,8 +83,6 @@ public struct ContentView: View {
     @ViewBuilder
     private var detailView: some View {
         VStack(spacing: 12) {
-            headerBar
-
             switch selectedSection ?? .videoConvert {
             case .videoConvert:
                 controlCard
@@ -101,27 +99,6 @@ public struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-    }
-
-    private var headerBar: some View {
-        HStack(spacing: 10) {
-            Text("AFormatFactory")
-                .font(.system(size: 28, weight: .heavy, design: .rounded))
-
-            Text("任务队列式媒体转换")
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.75))
-
-            Spacer()
-            
-            Text(viewModel.domain.displayName)
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.white.opacity(0.12))
-                .clipShape(Capsule())
-        }
-        .cardStyle(padding: 12)
     }
 
     private var controlCard: some View {
@@ -146,7 +123,10 @@ public struct ContentView: View {
 
                 Divider().frame(height: 22)
 
-                Button("添加任务") { viewModel.addTasksFromSelection() }
+                Button("添加任务") {
+                    viewModel.addTasksFromSelection()
+                    selectedSection = .tasks
+                }
                     .buttonStyle(.borderedProminent)
 
                 Spacer()
