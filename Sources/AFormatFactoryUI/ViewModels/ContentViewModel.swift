@@ -181,6 +181,7 @@ enum ConversionTaskStatus: String {
     case running
     case succeeded
     case failed
+    case cancelled
 
     var displayName: String {
         switch self {
@@ -192,6 +193,8 @@ enum ConversionTaskStatus: String {
             return "成功"
         case .failed:
             return "失败"
+        case .cancelled:
+            return "已终止"
         }
     }
 }
@@ -222,11 +225,14 @@ struct ConversionTask: Identifiable {
     let overwriteExisting: Bool
     let extraArguments: [String]
     let optionsSummary: String
+    let sourceDurationSeconds: Double?
+    let estimatedTotalFrames: Double?
 
     var status: ConversionTaskStatus
     var startedAt: Date?
     var finishedAt: Date?
     var logs: String
+    var progress: Double
 }
 
 @MainActor
@@ -311,6 +317,11 @@ final class ContentViewModel: ObservableObject {
     var selectedTask: ConversionTask? {
         guard let selectedTaskID else { return nil }
         return tasks.first(where: { $0.id == selectedTaskID })
+    }
+
+    var canTerminateSelectedTask: Bool {
+        guard let selectedTask else { return false }
+        return selectedTask.status == .queued || selectedTask.status == .running
     }
 
     var maxConcurrentTaskLimit: Int {

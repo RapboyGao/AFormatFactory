@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 private struct TaskExecutionContext {
@@ -39,6 +40,9 @@ actor AsyncSemaphore {
 }
 
 extension ContentViewModel {
+    private static var runningProcesses: [UUID: Process] = [:]
+    private static var cancellationRequests: Set<UUID> = []
+
     func commandText(for task: ConversionTask) -> String {
         let args = FFmpegRunner.commandArguments(
             input: task.inputURL,
@@ -48,6 +52,32 @@ extension ContentViewModel {
             extraArguments: task.extraArguments
         )
         return FFmpegRunner.commandString(arguments: args)
+    }
+
+    func terminateSelectedTask() {
+        guard let selectedTaskID else { return }
+        terminateTask(id: selectedTaskID)
+    }
+
+    func terminateTask(id: UUID) {
+        guard let index = indexOfTask(id: id) else { return }
+
+        switch tasks[index].status {
+        case .queued:
+            markTaskCancelled(id: id, reason: "任务在排队阶段被终止。")
+            appendAppLog("已终止排队任务：\(tasks[index].inputURL.lastPathComponent)")
+        case .running:
+            Self.cancellationRequests.insert(id)
+            if let process = Self.runningProcesses[id] {
+                process.terminate()
+                appendTaskLog(id: id, line: "已发送终止信号。")
+                appendAppLog("已请求终止运行任务：\(tasks[index].inputURL.lastPathComponent)")
+            } else {
+                appendTaskLog(id: id, line: "已记录终止请求，等待进程启动后终止。")
+            }
+        default:
+            break
+        }
     }
 
     func removeSelectedTask() {
@@ -130,6 +160,8 @@ extension ContentViewModel {
 
         let newTasks = files.map { file -> ConversionTask in
             let output = outputURL(for: file)
+            let sourceDuration = mediaDurationSeconds(for: file)
+            let totalFrames = estimatedFrameCount(for: file, duration: sourceDuration)
             let lines = [
                 "任务已创建。",
                 "输入：\(file.path)",
@@ -148,10 +180,13 @@ extension ContentViewModel {
                 overwriteExisting: overwriteExistingFiles,
                 extraArguments: extraArguments,
                 optionsSummary: optionsSummary,
+                sourceDurationSeconds: sourceDuration,
+                estimatedTotalFrames: totalFrames,
                 status: .queued,
                 startedAt: nil,
                 finishedAt: nil,
-                logs: lines.joined(separator: "\n")
+                logs: lines.joined(separator: "\n"),
+                progress: 0
             )
         }
 
@@ -220,18 +255,30 @@ extension ContentViewModel {
                 format: context.format,
                 overwriteExisting: context.overwriteExisting,
                 extraArguments: context.extraArguments
+                , didStartProcess: { [weak self] process in
+                    Task { @MainActor in
+                        self?.registerRunningProcess(process, for: context.id)
+                    }
+                }
             ) { [weak self] message in
                 Task { @MainActor in
+                    self?.updateTaskProgress(id: context.id, fromLogChunk: message)
                     self?.appendTaskLog(id: context.id, line: message.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
             }
 
             await MainActor.run {
+                self.unregisterRunningProcess(for: context.id)
                 self.markTaskSucceeded(id: context.id)
             }
         } catch {
             await MainActor.run {
-                self.markTaskFailed(id: context.id, reason: error.localizedDescription)
+                self.unregisterRunningProcess(for: context.id)
+                if self.isCancellationRequested(id: context.id) {
+                    self.markTaskCancelled(id: context.id, reason: "任务已终止。")
+                } else {
+                    self.markTaskFailed(id: context.id, reason: error.localizedDescription)
+                }
             }
         }
     }
@@ -249,8 +296,10 @@ extension ContentViewModel {
         guard let index = indexOfTask(id: id) else { return nil }
         guard tasks[index].status == .queued else { return nil }
 
+        Self.cancellationRequests.remove(id)
         tasks[index].status = .running
         tasks[index].startedAt = Date()
+        tasks[index].progress = 0
         appendTaskLog(id: id, line: "开始执行任务...")
 
         return TaskExecutionContext(
@@ -265,16 +314,28 @@ extension ContentViewModel {
 
     private func markTaskSucceeded(id: UUID) {
         guard let index = indexOfTask(id: id) else { return }
+        Self.cancellationRequests.remove(id)
         tasks[index].status = .succeeded
         tasks[index].finishedAt = Date()
+        tasks[index].progress = 1
         appendTaskLog(id: id, line: "任务完成。")
     }
 
     private func markTaskFailed(id: UUID, reason: String) {
         guard let index = indexOfTask(id: id) else { return }
+        Self.cancellationRequests.remove(id)
         tasks[index].status = .failed
         tasks[index].finishedAt = Date()
         appendTaskLog(id: id, line: "任务失败：\(reason)")
+    }
+
+    private func markTaskCancelled(id: UUID, reason: String) {
+        guard let index = indexOfTask(id: id) else { return }
+        Self.cancellationRequests.remove(id)
+        Self.runningProcesses.removeValue(forKey: id)
+        tasks[index].status = .cancelled
+        tasks[index].finishedAt = Date()
+        appendTaskLog(id: id, line: reason)
     }
 
     private func appendTaskLog(id: UUID, line: String) {
@@ -288,7 +349,99 @@ extension ContentViewModel {
         }
     }
 
+    private func updateTaskProgress(id: UUID, fromLogChunk chunk: String) {
+        guard let index = indexOfTask(id: id) else { return }
+        guard tasks[index].status == .running else { return }
+
+        let parts = chunk.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+        for part in parts {
+            let line = String(part)
+            if line.contains("progress=end") {
+                tasks[index].progress = 1
+                continue
+            }
+
+            if let timeToken = tokenValue(for: "out_time=", in: line) ?? tokenValue(for: "time=", in: line),
+               let elapsed = parseTimeToSeconds(timeToken),
+               let duration = tasks[index].sourceDurationSeconds,
+               duration > 0
+            {
+                let ratio = max(0, min(1, elapsed / duration))
+                if ratio > tasks[index].progress {
+                    tasks[index].progress = ratio
+                }
+                continue
+            }
+
+            if let frameToken = tokenValue(for: "frame=", in: line),
+               let frame = Double(frameToken),
+               let totalFrames = tasks[index].estimatedTotalFrames,
+               totalFrames > 0
+            {
+                let ratio = max(0, min(1, frame / totalFrames))
+                if ratio > tasks[index].progress {
+                    tasks[index].progress = ratio
+                }
+            }
+        }
+    }
+
+    private func tokenValue(for key: String, in line: String) -> String? {
+        guard let range = line.range(of: key) else { return nil }
+        var tail = line[range.upperBound...]
+        while let first = tail.first, first == " " {
+            tail.removeFirst()
+        }
+        let token = tail.prefix { !$0.isWhitespace }
+        guard !token.isEmpty else { return nil }
+        let value = String(token)
+        return value == "N/A" ? nil : value
+    }
+
+    private func parseTimeToSeconds(_ value: String) -> Double? {
+        let parts = value.split(separator: ":")
+        if parts.count == 3 {
+            guard let h = Double(parts[0]), let m = Double(parts[1]), let s = Double(parts[2]) else {
+                return nil
+            }
+            return h * 3600 + m * 60 + s
+        }
+        return Double(value)
+    }
+
+    private func mediaDurationSeconds(for file: URL) -> Double? {
+        let asset = AVURLAsset(url: file)
+        let duration = CMTimeGetSeconds(asset.duration)
+        guard duration.isFinite, duration > 0 else { return nil }
+        return duration
+    }
+
+    private func estimatedFrameCount(for file: URL, duration: Double?) -> Double? {
+        guard let duration, duration > 0 else { return nil }
+        let asset = AVURLAsset(url: file)
+        guard let track = asset.tracks(withMediaType: .video).first else { return nil }
+        let fps = Double(track.nominalFrameRate)
+        guard fps.isFinite, fps > 0 else { return nil }
+        return duration * fps
+    }
+
     private func indexOfTask(id: UUID) -> Int? {
         tasks.firstIndex(where: { $0.id == id })
+    }
+
+    private func registerRunningProcess(_ process: Process, for id: UUID) {
+        Self.runningProcesses[id] = process
+        if Self.cancellationRequests.contains(id) {
+            process.terminate()
+            appendTaskLog(id: id, line: "检测到终止请求，已发送终止信号。")
+        }
+    }
+
+    private func unregisterRunningProcess(for id: UUID) {
+        Self.runningProcesses.removeValue(forKey: id)
+    }
+
+    private func isCancellationRequested(id: UUID) -> Bool {
+        Self.cancellationRequests.contains(id)
     }
 }

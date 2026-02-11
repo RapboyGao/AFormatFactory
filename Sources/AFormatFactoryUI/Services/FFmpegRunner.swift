@@ -45,6 +45,7 @@ struct FFmpegRunner {
         format: ConversionFormat,
         overwriteExisting: Bool,
         extraArguments: [String],
+        didStartProcess: ((Process) -> Void)? = nil,
         logHandler: @escaping @Sendable (String) -> Void
     ) async throws {
         let executable = try await ensureBundledFFmpeg(logHandler: logHandler)
@@ -73,6 +74,7 @@ struct FFmpegRunner {
         }
 
         try process.run()
+        didStartProcess?(process)
         process.waitUntilExit()
         outputPipe.fileHandleForReading.readabilityHandler = nil
 

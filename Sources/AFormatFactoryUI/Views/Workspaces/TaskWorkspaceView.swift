@@ -53,10 +53,16 @@ struct TaskWorkspaceView: View {
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                                     .lineLimit(1)
 
-                                Text("\(task.format.displayName)  ·  \(task.status.displayName)")
+                                Text(subtitle(for: task))
                                     .font(.system(size: 11, weight: .medium, design: .rounded))
                                     .foregroundStyle(.white.opacity(0.65))
                                     .lineLimit(1)
+
+                                if task.status == .running {
+                                    ProgressView(value: task.progress)
+                                        .progressViewStyle(.linear)
+                                        .frame(width: 180)
+                                }
                             }
 
                             Spacer(minLength: 8)
@@ -137,6 +143,13 @@ struct TaskWorkspaceView: View {
 
     private func count(for status: ConversionTaskStatus) -> Int {
         viewModel.tasks.filter { $0.status == status }.count
+    }
+
+    private func subtitle(for task: ConversionTask) -> String {
+        if task.status == .running {
+            return "\(task.format.displayName)  ·  \(task.status.displayName) \(Int(task.progress * 100))%"
+        }
+        return "\(task.format.displayName)  ·  \(task.status.displayName)"
     }
 
     @ViewBuilder
