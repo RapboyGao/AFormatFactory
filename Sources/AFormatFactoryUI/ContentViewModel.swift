@@ -285,6 +285,16 @@ final class ContentViewModel: ObservableObject {
         }
     }
 
+    func removeSelectedInputFile(_ file: URL) {
+        switch domain {
+        case .video:
+            selectedVideoFiles.removeAll { $0 == file }
+        case .audio:
+            selectedAudioFiles.removeAll { $0 == file }
+        }
+        appendAppLog("已移除输入文件：\(file.lastPathComponent)")
+    }
+
     func addTasksFromSelection() {
         let files = selectedFiles
         guard !files.isEmpty else {

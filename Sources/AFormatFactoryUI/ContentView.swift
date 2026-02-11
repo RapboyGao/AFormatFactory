@@ -87,9 +87,11 @@ public struct ContentView: View {
             case .videoConvert:
                 controlCard
                     .onAppear { viewModel.domain = .video }
+                addTaskBar
             case .audioConvert:
                 controlCard
                     .onAppear { viewModel.domain = .audio }
+                addTaskBar
             case .tasks:
                 taskWorkspace
             case .appLog:
@@ -121,14 +123,6 @@ public struct ContentView: View {
                 .pickerStyle(.menu)
                 .frame(width: 180)
 
-                Divider().frame(height: 22)
-
-                Button("添加任务") {
-                    viewModel.addTasksFromSelection()
-                    selectedSection = .tasks
-                }
-                    .buttonStyle(.borderedProminent)
-
                 Spacer()
             }
 
@@ -159,11 +153,22 @@ public struct ContentView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(viewModel.selectedFiles, id: \.self) { file in
-                                Text(file.path)
-                                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                    .foregroundStyle(.white.opacity(0.85))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .textSelection(.enabled)
+                                HStack(spacing: 8) {
+                                    Text(file.path)
+                                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.85))
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+
+                                    Button {
+                                        viewModel.removeSelectedInputFile(file)
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .foregroundStyle(.white.opacity(0.65))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("从已选输入文件中删除")
+                                }
                             }
                         }
                         .padding(8)
@@ -181,6 +186,18 @@ public struct ContentView: View {
         .cardStyle()
     }
 
+    private var addTaskBar: some View {
+        HStack {
+            Spacer()
+            Button("添加任务") {
+                viewModel.addTasksFromSelection()
+                selectedSection = .tasks
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .cardStyle(padding: 10)
+    }
+
     private var parameterEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("高级参数")
@@ -194,6 +211,7 @@ public struct ContentView: View {
                         }
                     }
                     .pickerStyle(.menu)
+                    .labelsHidden()
                     .frame(width: 150)
                 }
 
@@ -290,7 +308,7 @@ public struct ContentView: View {
                 Spacer()
             }
         }
-        .cardStyle()
+        .padding(.vertical, 2)
     }
 
     private var taskWorkspace: some View {
