@@ -259,7 +259,7 @@ struct ConversionTask: Identifiable {
 }
 
 @MainActor
-final class ContentViewModel: ObservableObject {
+public final class ContentViewModel: ObservableObject {
     static let defaultConcurrentTaskCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
 
     @Published var domain: ConversionDomain = .video {
@@ -359,7 +359,7 @@ final class ContentViewModel: ObservableObject {
     var previewUndoStack: [PreviewSnapshot] = []
     var previewRedoStack: [PreviewSnapshot] = []
 
-    init() {
+    public init() {
         applyPreset()
         Task {
             await refreshSupportedFormats()

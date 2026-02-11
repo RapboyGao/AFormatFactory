@@ -1,5 +1,9 @@
 import SwiftUI
 
+public enum AppWindowID {
+    public static let previewEditor = "preview-editor"
+}
+
 enum WorkspaceSection: String, CaseIterable, Identifiable {
     case videoConvert
     case audioConvert
@@ -35,11 +39,14 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
     }
 }
 
+@MainActor
 public struct ContentView: View {
-    @StateObject private var viewModel = ContentViewModel()
+    @ObservedObject private var viewModel: ContentViewModel
     @State private var selectedSection: WorkspaceSection? = .videoConvert
 
-    public init() {}
+    public init(viewModel: ContentViewModel) {
+        self.viewModel = viewModel
+    }
 
     public var body: some View {
         NavigationSplitView {
@@ -74,6 +81,6 @@ public struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    ContentView(viewModel: ContentViewModel())
         .frame(width: 1200, height: 860)
 }
