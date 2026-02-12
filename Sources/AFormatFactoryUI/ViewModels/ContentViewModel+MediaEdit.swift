@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import UniformTypeIdentifiers
 
@@ -32,6 +33,9 @@ extension ContentViewModel {
                 mediaEditOutputDirectory = url.deletingLastPathComponent()
             }
             appendMediaEditLog("已选择视频：\(url.path)")
+            Task { @MainActor in
+                await loadMediaEditSourceInfo(from: url)
+            }
         }
     }
 
@@ -186,6 +190,21 @@ extension ContentViewModel {
         mediaEditIsProcessing = false
     }
 
+    private func loadMediaEditSourceInfo(from url: URL) async {
+        appendMediaEditLog("正在读取源文件信息...")
+
+        let asset = AVURLAsset(url: url)
+        do {
+            let metadataItems = try await loadAllMetadataItems(from: asset)
+            await applyLoadedMetadata(metadataItems)
+            mediaEditChapters = try await loadChapters(from: asset)
+
+            appendMediaEditLog("已自动加载源文件信息：metadata \(metadataItems.count) 项，章节 \(mediaEditChapters.count) 项。")
+        } catch {
+            appendMediaEditLog("读取源文件信息失败：\(error.localizedDescription)")
+        }
+    }
+
     private func mediaEditArguments(
         inputVideo: URL,
         additionalAudio: URL?,
@@ -332,5 +351,111 @@ extension ContentViewModel {
         default:
             return nil
         }
+    }
+
+    private func loadAllMetadataItems(from asset: AVURLAsset) async throws -> [AVMetadataItem] {
+        let formats = try await asset.load(.availableMetadataFormats)
+        var result: [AVMetadataItem] = []
+        for format in formats {
+            let items = try await asset.loadMetadata(for: format)
+            result.append(contentsOf: items)
+        }
+        return result
+    }
+
+    private func applyLoadedMetadata(_ items: [AVMetadataItem]) async {
+        if let title = await valueFromMetadata(items, commonKey: .commonKeyTitle) {
+            mediaEditMetadataTitle = title
+        }
+        if let artist = await valueFromMetadata(items, commonKey: .commonKeyArtist) {
+            mediaEditMetadataArtist = artist
+        }
+        if let album = await valueFromMetadata(items, commonKey: .commonKeyAlbumName) {
+            mediaEditMetadataAlbum = album
+        }
+        if let comment = await valueFromMetadata(items, commonKey: .commonKeyDescription) {
+            mediaEditMetadataComment = comment
+        }
+        if let creationDate = await valueFromMetadata(items, commonKey: .commonKeyCreationDate) {
+            mediaEditMetadataYear = extractYear(from: creationDate)
+        }
+        if let genre = await valueFromMetadata(items, commonKey: .commonKeyType) {
+            mediaEditMetadataGenre = genre
+        }
+        if let copyright = await valueFromMetadata(items, commonKey: .commonKeyCopyrights) {
+            mediaEditMetadataCopyright = copyright
+        }
+        if let language = firstMetadataLanguage(items) {
+            mediaEditMetadataLanguage = language
+        }
+    }
+
+    private func valueFromMetadata(_ items: [AVMetadataItem], commonKey: AVMetadataKey) async -> String? {
+        for item in items {
+            guard item.commonKey == commonKey else { continue }
+            let stringValue = try? await item.load(.stringValue)
+            if let value = nonEmptyValue(stringValue ?? "") {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func firstMetadataLanguage(_ items: [AVMetadataItem]) -> String? {
+        for item in items {
+            if let localeID = item.locale?.identifier, let value = nonEmptyValue(localeID) {
+                return value
+            }
+            if let extTag = item.extendedLanguageTag, let value = nonEmptyValue(extTag) {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func extractYear(from raw: String) -> String {
+        let digits = raw.filter(\.isNumber)
+        if digits.count >= 4 {
+            return String(digits.prefix(4))
+        }
+        return raw
+    }
+
+    private func loadChapters(from asset: AVURLAsset) async throws -> [MediaEditChapter] {
+        let groups = try await asset.loadChapterMetadataGroups(bestMatchingPreferredLanguages: Locale.preferredLanguages)
+        var chapters: [MediaEditChapter] = []
+        chapters.reserveCapacity(groups.count)
+
+        for (index, group) in groups.enumerated() {
+            let start = max(0, CMTimeGetSeconds(group.timeRange.start))
+            let end = max(start, CMTimeGetSeconds(group.timeRange.start + group.timeRange.duration))
+            let startText = formatMediaEditTime(start)
+            let endText = formatMediaEditTime(end)
+            let title = await firstChapterTitle(from: group.items) ?? "Chapter \(index + 1)"
+            chapters.append(MediaEditChapter(startTime: startText, endTime: endText, title: title))
+        }
+
+        return chapters
+    }
+
+    private func firstChapterTitle(from items: [AVMetadataItem]) async -> String? {
+        for item in items where item.commonKey == .commonKeyTitle {
+            let stringValue = try? await item.load(.stringValue)
+            if let value = nonEmptyValue(stringValue ?? "") {
+                return value
+            }
+        }
+        for item in items {
+            let stringValue = try? await item.load(.stringValue)
+            if let value = nonEmptyValue(stringValue ?? "") {
+                return value
+            }
+        }
+        return nil
+    }
+
+    private func formatMediaEditTime(_ seconds: Double) -> String {
+        let clamped = max(0, seconds)
+        return String(format: "%.3f", clamped)
     }
 }
