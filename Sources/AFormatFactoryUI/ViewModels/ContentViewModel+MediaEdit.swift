@@ -142,33 +142,17 @@ extension ContentViewModel {
         if let copyright = nonEmptyValue(mediaEditMetadataCopyright) { metadata["copyright"] = copyright }
         if let language = nonEmptyValue(mediaEditMetadataLanguage) { metadata["language"] = language }
 
-        var temporaryChapterMetadataURL: URL?
         let chapters = normalizedMediaEditChapters()
-        if !chapters.isEmpty {
-            do {
-                temporaryChapterMetadataURL = try makeChapterMetadataFile(chapters: chapters)
-            } catch {
-                appendMediaEditLog("章节写入失败：\(error.localizedDescription)")
-                appendAppLog("章节写入失败：\(error.localizedDescription)")
-                return
-            }
-        }
-
-        defer {
-            if let temporaryChapterMetadataURL {
-                try? FileManager.default.removeItem(at: temporaryChapterMetadataURL)
-            }
-        }
 
         let args = mediaEditArguments(
             inputVideo: input,
             additionalAudio: mediaEditAdditionalAudioURL,
             subtitle: mediaEditSubtitleURL,
-            chapterMetadataInput: temporaryChapterMetadataURL,
             output: outputURL,
             overwrite: mediaEditOverwriteExisting,
             metadata: metadata,
-            outputExtension: outputExt
+            outputExtension: outputExt,
+            hasChapters: !chapters.isEmpty
         )
 
         mediaEditIsProcessing = true
@@ -186,7 +170,20 @@ extension ContentViewModel {
                 input: input,
                 output: outputURL,
                 overwriteExisting: mediaEditOverwriteExisting,
-                arguments: extra
+                arguments: extra,
+                mediaEditConfig: FFmpegMediaEditConfig(
+                    additionalAudioInput: mediaEditAdditionalAudioURL,
+                    subtitleInput: mediaEditSubtitleURL,
+                    subtitleCodec: ["mp4", "mov", "m4v"].contains(outputExt.lowercased()) ? "mov_text" : "copy",
+                    metadata: metadata,
+                    chapters: chapters.map {
+                        FFmpegMediaEditChapter(
+                            startMilliseconds: $0.startMS,
+                            endMilliseconds: $0.endMS,
+                            title: $0.title
+                        )
+                    }
+                )
             )
             _ = try await engine.execute(
                 job: job,
@@ -229,11 +226,11 @@ extension ContentViewModel {
         inputVideo: URL,
         additionalAudio: URL?,
         subtitle: URL?,
-        chapterMetadataInput: URL?,
         output: URL,
         overwrite: Bool,
         metadata: [String: String],
-        outputExtension: String
+        outputExtension: String,
+        hasChapters: Bool
     ) -> [String] {
         var args: [String] = [overwrite ? "-y" : "-n", "-i", inputVideo.path]
 
@@ -242,9 +239,6 @@ extension ContentViewModel {
         }
         if let subtitle {
             args += ["-i", subtitle.path]
-        }
-        if let chapterMetadataInput {
-            args += ["-f", "ffmetadata", "-i", chapterMetadataInput.path]
         }
 
         args += ["-map", "0:v:0?"]
@@ -260,8 +254,8 @@ extension ContentViewModel {
             args += ["-map", "\(nextInputIndex):s?"]
             nextInputIndex += 1
         }
-        if chapterMetadataInput != nil {
-            args += ["-map_chapters", "\(nextInputIndex)"]
+        if hasChapters {
+            args += ["-map_chapters", "-1"]
         }
 
         args += ["-c:v", "copy", "-c:a", "copy"]
@@ -313,36 +307,6 @@ extension ContentViewModel {
             result.append((startMS: startMS, endMS: endMS, title: title))
         }
         return result.sorted(by: { $0.startMS < $1.startMS })
-    }
-
-    private func makeChapterMetadataFile(chapters: [(startMS: Int, endMS: Int, title: String)]) throws -> URL {
-        let fileName = "aformatfactory-chapters-\(UUID().uuidString).ffmeta"
-        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName, isDirectory: false)
-
-        var lines: [String] = [";FFMETADATA1"]
-        for chapter in chapters {
-            lines += [
-                "[CHAPTER]",
-                "TIMEBASE=1/1000",
-                "START=\(chapter.startMS)",
-                "END=\(chapter.endMS)",
-                "title=\(escapeFFMetadataValue(chapter.title))"
-            ]
-        }
-
-        let body = lines.joined(separator: "\n") + "\n"
-        try body.write(to: fileURL, atomically: true, encoding: .utf8)
-        return fileURL
-    }
-
-    private func escapeFFMetadataValue(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "=", with: "\\=")
-            .replacingOccurrences(of: ";", with: "\\;")
-            .replacingOccurrences(of: "#", with: "\\#")
-            .replacingOccurrences(of: "\n", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func parseMediaEditTimeSeconds(_ raw: String) -> Double? {

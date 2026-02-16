@@ -45,18 +45,6 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$EXECUTABLE_PATH" "$MACOS_DIR/$EXECUTABLE_NAME"
 cp "$ICON_FILE" "$RESOURCES_DIR/AppIcon.icns"
 
-FFMPEG_BIN_DIR="$RESOURCES_DIR/bin"
-FFMPEG_BIN_PATH="$FFMPEG_BIN_DIR/ffmpeg"
-mkdir -p "$FFMPEG_BIN_DIR"
-if [[ -x "$ROOT_DIR/ThirdParty/ffmpeg-install/bin/ffmpeg" ]]; then
-  cp "$ROOT_DIR/ThirdParty/ffmpeg-install/bin/ffmpeg" "$FFMPEG_BIN_PATH"
-  chmod +x "$FFMPEG_BIN_PATH"
-else
-  echo "Missing ffmpeg binary at ThirdParty/ffmpeg-install/bin/ffmpeg" >&2
-  echo "Run: ./Scripts/build_ffmpeg_libs.sh ENABLE_PROGRAMS=1" >&2
-  exit 1
-fi
-
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

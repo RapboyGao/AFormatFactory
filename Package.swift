@@ -15,7 +15,31 @@ let package = Package(
         .target(
             name: "AFormatFactoryFFmpegC",
             path: "Sources/AFormatFactoryFFmpegC",
-            publicHeadersPath: "include"
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-IThirdParty/ffmpeg-install/include"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-LThirdParty/ffmpeg-install/lib"]),
+                .linkedLibrary("avformat"),
+                .linkedLibrary("avcodec"),
+                .linkedLibrary("avfilter"),
+                .linkedLibrary("swresample"),
+                .linkedLibrary("swscale"),
+                .linkedLibrary("avutil"),
+                .linkedLibrary("z"),
+                .linkedLibrary("bz2"),
+                .linkedLibrary("iconv"),
+                .linkedLibrary("m"),
+                .linkedFramework("VideoToolbox"),
+                .linkedFramework("CoreMedia"),
+                .linkedFramework("CoreVideo"),
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("CoreImage"),
+                .linkedFramework("AppKit"),
+                .linkedFramework("Security")
+            ]
         ),
         .target(
             name: "AFormatFactoryFFmpegKit",
@@ -41,6 +65,11 @@ let package = Package(
                     "-Xlinker", "Sources/AFormatFactoryApp/Info.plist"
                 ])
             ]
+        ),
+        .testTarget(
+            name: "AFormatFactoryFFmpegKitTests",
+            dependencies: ["AFormatFactoryFFmpegKit"],
+            path: "Tests/AFormatFactoryFFmpegKitTests"
         )
     ]
 )

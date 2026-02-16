@@ -66,7 +66,7 @@ SIGN_APP=0 ./Scripts/build_app.sh
 ## FFmpeg 来源与许可
 - FFmpeg 源码位于：`ThirdParty/ffmpeg/source`（固定 tag，见 `ThirdParty/ffmpeg/VERSION.txt`）
 - 本地构建产物位于：`ThirdParty/ffmpeg-install`
-- 打包时会内置：`AFormatFactory.app/Contents/Resources/bin/ffmpeg`
+- App 不再内置 `ffmpeg` 可执行文件，运行时通过静态链接 `libav*` 调用
 - 默认构建策略：`LGPL 优先（--disable-gpl --disable-nonfree）`
 - 同步源码：
 ```bash

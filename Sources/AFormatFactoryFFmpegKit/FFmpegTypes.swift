@@ -69,6 +69,7 @@ public struct FFmpegJob: Sendable {
     public let output: URL
     public let overwriteExisting: Bool
     public let arguments: [String]
+    public let mediaEditConfig: FFmpegMediaEditConfig?
     public let estimatedDurationSeconds: Double?
     public let estimatedTotalFrames: Double?
 
@@ -78,6 +79,7 @@ public struct FFmpegJob: Sendable {
         output: URL,
         overwriteExisting: Bool,
         arguments: [String],
+        mediaEditConfig: FFmpegMediaEditConfig? = nil,
         estimatedDurationSeconds: Double? = nil,
         estimatedTotalFrames: Double? = nil
     ) {
@@ -86,8 +88,43 @@ public struct FFmpegJob: Sendable {
         self.output = output
         self.overwriteExisting = overwriteExisting
         self.arguments = arguments
+        self.mediaEditConfig = mediaEditConfig
         self.estimatedDurationSeconds = estimatedDurationSeconds
         self.estimatedTotalFrames = estimatedTotalFrames
+    }
+}
+
+public struct FFmpegMediaEditChapter: Sendable {
+    public let startMilliseconds: Int
+    public let endMilliseconds: Int
+    public let title: String
+
+    public init(startMilliseconds: Int, endMilliseconds: Int, title: String) {
+        self.startMilliseconds = startMilliseconds
+        self.endMilliseconds = endMilliseconds
+        self.title = title
+    }
+}
+
+public struct FFmpegMediaEditConfig: Sendable {
+    public let additionalAudioInput: URL?
+    public let subtitleInput: URL?
+    public let subtitleCodec: String
+    public let metadata: [String: String]
+    public let chapters: [FFmpegMediaEditChapter]
+
+    public init(
+        additionalAudioInput: URL? = nil,
+        subtitleInput: URL? = nil,
+        subtitleCodec: String = "copy",
+        metadata: [String: String] = [:],
+        chapters: [FFmpegMediaEditChapter] = []
+    ) {
+        self.additionalAudioInput = additionalAudioInput
+        self.subtitleInput = subtitleInput
+        self.subtitleCodec = subtitleCodec
+        self.metadata = metadata
+        self.chapters = chapters
     }
 }
 

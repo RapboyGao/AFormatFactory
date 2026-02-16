@@ -6,7 +6,7 @@ FFMPEG_SRC_DIR="$ROOT_DIR/ThirdParty/ffmpeg/source"
 FFMPEG_BUILD_DIR="$ROOT_DIR/ThirdParty/ffmpeg-build"
 FFMPEG_INSTALL_DIR="$ROOT_DIR/ThirdParty/ffmpeg-install"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
-ENABLE_PROGRAMS="${ENABLE_PROGRAMS:-1}"
+ENABLE_PROGRAMS="${ENABLE_PROGRAMS:-0}"
 
 if [[ ! -d "$FFMPEG_SRC_DIR/.git" ]]; then
   echo "FFmpeg source not found, syncing..."
@@ -66,7 +66,7 @@ make distclean
 popd >/dev/null
 
 rm -rf "$FFMPEG_INSTALL_DIR/include" "$FFMPEG_INSTALL_DIR/lib" "$FFMPEG_INSTALL_DIR/bin"
-mkdir -p "$FFMPEG_INSTALL_DIR/include" "$FFMPEG_INSTALL_DIR/lib" "$FFMPEG_INSTALL_DIR/bin"
+mkdir -p "$FFMPEG_INSTALL_DIR/include" "$FFMPEG_INSTALL_DIR/lib"
 
 cp -R "$FFMPEG_INSTALL_DIR/$ARCH/include/." "$FFMPEG_INSTALL_DIR/include/"
 cp "$FFMPEG_INSTALL_DIR/$ARCH/lib/"*.a "$FFMPEG_INSTALL_DIR/lib/"

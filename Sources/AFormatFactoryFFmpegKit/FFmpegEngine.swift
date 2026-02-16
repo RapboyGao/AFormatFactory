@@ -1,103 +1,208 @@
 import AVFoundation
+import AFormatFactoryFFmpegC
 import Foundation
 
 public enum FFmpegEngineError: LocalizedError {
-    case ffmpegBinaryMissing(path: String)
-    case failed(code: Int32, details: String)
+    case failed(reason: String)
 
     public var errorDescription: String? {
         switch self {
-        case let .ffmpegBinaryMissing(path):
-            return "未找到 ffmpeg 可执行文件：\(path)。请先运行 Scripts/build_ffmpeg_libs.sh"
-        case let .failed(code, details):
-            return "ffmpeg 执行失败（退出码 \(code)）：\(details)"
+        case let .failed(reason):
+            return reason
         }
     }
 }
 
+private final class CallbackBox {
+    let callbacks: FFmpegCallbacks
+
+    init(callbacks: FFmpegCallbacks) {
+        self.callbacks = callbacks
+    }
+}
+
 public final class FFmpegEngine: FFmpegEngineProtocol, @unchecked Sendable {
-    private static var runningProcesses: [UUID: Process] = [:]
-    private static let runningLock = NSLock()
+    private static var runningJobs: [UUID: OpaquePointer] = [:]
+    private static let runningJobsQueue = DispatchQueue(label: "AFormatFactory.FFmpegEngine.runningJobs")
 
     public init() {}
 
     public func probe(url: URL) async throws -> FFmpegMediaInfo {
-        let asset = AVURLAsset(url: url)
-        let duration = try await asset.load(.duration)
-        let durationSeconds = CMTimeGetSeconds(duration)
-        let tracks = try await asset.loadTracks(withMediaType: .video)
-        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-        let subtitleTracks = try await asset.loadTracks(withMediaType: .subtitle)
-        let streamCount = tracks.count + audioTracks.count + subtitleTracks.count
-        return FFmpegMediaInfo(
-            durationSeconds: durationSeconds.isFinite ? durationSeconds : nil,
-            streamCount: streamCount
-        )
+        try await Task.detached(priority: .userInitiated) {
+            var jsonPtr: UnsafeMutablePointer<CChar>?
+            let code = aff_probe_media(url.path, &jsonPtr)
+            guard code == 0 else {
+                throw FFmpegEngineError.failed(reason: Self.lastError())
+            }
+            defer {
+                if let jsonPtr {
+                    aff_free_string(jsonPtr)
+                }
+            }
+
+            guard let jsonPtr else {
+                return FFmpegMediaInfo(durationSeconds: nil, streamCount: 0)
+            }
+            let data = Data(String(cString: jsonPtr).utf8)
+            if
+                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let streams = object["streams"] as? Int
+            {
+                return FFmpegMediaInfo(durationSeconds: object["duration"] as? Double, streamCount: streams)
+            }
+            return FFmpegMediaInfo(durationSeconds: nil, streamCount: 0)
+        }.value
     }
 
     public func detectCapabilities() async throws -> FFmpegCapabilities {
-        let executable = try ffmpegExecutableURL()
-        let muxersOutput = try runAndCapture(executable: executable, arguments: ["-hide_banner", "-muxers"])
-        let encodersOutput = try runAndCapture(executable: executable, arguments: ["-hide_banner", "-encoders"])
-        return FFmpegCapabilities(
-            muxers: parseMuxers(from: muxersOutput),
-            encoders: parseEncoders(from: encodersOutput)
-        )
+        try await Task.detached(priority: .userInitiated) {
+            var muxersPtr: UnsafeMutablePointer<CChar>?
+            var encodersPtr: UnsafeMutablePointer<CChar>?
+            let code = aff_detect_capabilities(&muxersPtr, &encodersPtr)
+            guard code == 0 else {
+                throw FFmpegEngineError.failed(reason: Self.lastError())
+            }
+            defer {
+                if let muxersPtr { aff_free_string(muxersPtr) }
+                if let encodersPtr { aff_free_string(encodersPtr) }
+            }
+
+            let muxers = Self.parseJsonArray(muxersPtr)
+            let encoders = Self.parseJsonArray(encodersPtr)
+            return FFmpegCapabilities(muxers: Set(muxers), encoders: Set(encoders))
+        }.value
     }
 
     public func execute(job: FFmpegJob, callbacks: FFmpegCallbacks) async throws -> FFmpegResult {
-        let executable = try ffmpegExecutableURL()
-        let arguments = Self.commandArguments(
-            input: job.input,
-            output: job.output,
-            overwriteExisting: job.overwriteExisting,
-            extraArguments: job.arguments
-        )
-
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-
-        let outputPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = outputPipe
-
-        outputPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else {
-                return
+        try await Task.detached(priority: .userInitiated) {
+            guard let cJob = aff_create_job() else {
+                throw FFmpegEngineError.failed(reason: Self.lastError())
             }
-            callbacks.onLog(.info, text)
-            self.emitProgress(from: text, duration: job.estimatedDurationSeconds, totalFrames: job.estimatedTotalFrames, callbacks: callbacks)
-        }
+            defer { aff_destroy_job(cJob) }
 
-        callbacks.onState(.started)
-        try process.run()
-        register(process: process, for: job.id)
-        process.waitUntilExit()
-        outputPipe.fileHandleForReading.readabilityHandler = nil
-        unregister(jobID: job.id)
+            let setIO = aff_set_input_output(cJob, job.input.path, job.output.path, job.overwriteExisting ? 1 : 0)
+            guard setIO == 0 else {
+                throw FFmpegEngineError.failed(reason: Self.lastError())
+            }
 
-        if process.terminationReason == .uncaughtSignal {
-            callbacks.onState(.cancelled)
-            throw FFmpegEngineError.failed(code: process.terminationStatus, details: arguments.joined(separator: " "))
-        }
+            let argsStorage = job.arguments.map { strdup($0) }
+            defer {
+                for ptr in argsStorage {
+                    if let ptr { free(ptr) }
+                }
+            }
 
-        guard process.terminationStatus == 0 else {
-            callbacks.onState(.failed("exit=\(process.terminationStatus)"))
-            throw FFmpegEngineError.failed(code: process.terminationStatus, details: arguments.joined(separator: " "))
-        }
+            var argPtrs: [UnsafePointer<CChar>?] = argsStorage.map { ptr in
+                ptr.map { UnsafePointer<CChar>($0) }
+            }
+            let setArgs = argPtrs.withUnsafeMutableBufferPointer { buffer -> Int32 in
+                aff_set_arguments(cJob, buffer.baseAddress, Int32(buffer.count))
+            }
+            guard setArgs == 0 else {
+                throw FFmpegEngineError.failed(reason: Self.lastError())
+            }
 
-        callbacks.onProgress(FFmpegProgress(estimatedRatio: 1))
-        callbacks.onState(.completed)
-        return FFmpegResult(exitCode: process.terminationStatus)
+            if let mediaEdit = job.mediaEditConfig {
+                let setInputsCode = aff_set_media_edit_inputs(
+                    cJob,
+                    mediaEdit.additionalAudioInput?.path,
+                    mediaEdit.subtitleInput?.path,
+                    mediaEdit.subtitleCodec
+                )
+                guard setInputsCode == 0 else {
+                    throw FFmpegEngineError.failed(reason: Self.lastError())
+                }
+
+                for (key, value) in mediaEdit.metadata.sorted(by: { $0.key < $1.key }) {
+                    let addMetadataCode = aff_add_metadata(cJob, key, value)
+                    guard addMetadataCode == 0 else {
+                        throw FFmpegEngineError.failed(reason: Self.lastError())
+                    }
+                }
+
+                let clearChaptersCode = aff_clear_chapters(cJob)
+                guard clearChaptersCode == 0 else {
+                    throw FFmpegEngineError.failed(reason: Self.lastError())
+                }
+                for chapter in mediaEdit.chapters {
+                    let addChapterCode = aff_add_chapter(
+                        cJob,
+                        Int64(chapter.startMilliseconds),
+                        Int64(chapter.endMilliseconds),
+                        chapter.title
+                    )
+                    guard addChapterCode == 0 else {
+                        throw FFmpegEngineError.failed(reason: Self.lastError())
+                    }
+                }
+            }
+
+            let callbackBox = CallbackBox(callbacks: callbacks)
+            let retained = Unmanaged.passRetained(callbackBox)
+            defer { retained.release() }
+
+            Self.runningJobsQueue.sync {
+                Self.runningJobs[job.id] = cJob
+            }
+
+            callbacks.onState(.started)
+
+            let runCode = aff_run_job_async(
+                cJob,
+                { level, message, rawContext in
+                    guard let rawContext, let message else { return }
+                    let box = Unmanaged<CallbackBox>.fromOpaque(rawContext).takeUnretainedValue()
+                    let text = String(cString: message)
+                    let logLevel: FFmpegLogLevel = (level >= 2) ? .error : ((level == 1) ? .warning : .info)
+                    box.callbacks.onLog(logLevel, text)
+                },
+                { progress, rawContext in
+                    guard let rawContext else { return }
+                    let box = Unmanaged<CallbackBox>.fromOpaque(rawContext).takeUnretainedValue()
+                    let estimated = progress.estimated_ratio > 0 ? progress.estimated_ratio : nil
+                    let processed = progress.processed_time_seconds > 0 ? progress.processed_time_seconds : nil
+                    let frames = progress.processed_frames > 0 ? Double(progress.processed_frames) : nil
+                    let bitrate = progress.bitrate_kbps > 0 ? progress.bitrate_kbps : nil
+                    let speed = progress.speed > 0 ? progress.speed : nil
+                    box.callbacks.onProgress(
+                        FFmpegProgress(
+                            processedFrames: frames,
+                            processedTimeSeconds: processed,
+                            estimatedRatio: estimated,
+                            bitrateKbps: bitrate,
+                            speed: speed
+                        )
+                    )
+                },
+                retained.toOpaque()
+            )
+
+            _ = Self.runningJobsQueue.sync {
+                Self.runningJobs.removeValue(forKey: job.id)
+            }
+
+            guard runCode == 0 else {
+                let reason = Self.lastError()
+                if reason.contains("cancel") {
+                    callbacks.onState(.cancelled)
+                } else {
+                    callbacks.onState(.failed(reason))
+                }
+                throw FFmpegEngineError.failed(reason: reason)
+            }
+
+            callbacks.onProgress(FFmpegProgress(estimatedRatio: 1))
+            callbacks.onState(.completed)
+            return FFmpegResult(exitCode: 0)
+        }.value
     }
 
     public func cancel(jobID: UUID) {
-        Self.runningLock.lock()
-        let process = Self.runningProcesses[jobID]
-        Self.runningLock.unlock()
-        process?.terminate()
+        let jobPtr = Self.runningJobsQueue.sync {
+            Self.runningJobs[jobID]
+        }
+        guard let jobPtr else { return }
+        _ = aff_cancel_job(jobPtr)
     }
 
     public static func commandArguments(
@@ -123,141 +228,18 @@ public final class FFmpegEngine: FFmpegEngineProtocol, @unchecked Sendable {
         return "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 
-    private func ffmpegExecutableURL() throws -> URL {
-        if let explicit = ProcessInfo.processInfo.environment["AFORMATFACTORY_FFMPEG_BIN"], !explicit.isEmpty {
-            let url = URL(fileURLWithPath: explicit)
-            if FileManager.default.isExecutableFile(atPath: url.path) {
-                return url
-            }
-            throw FFmpegEngineError.ffmpegBinaryMissing(path: url.path)
-        }
-
-        let bundleURL = Bundle.main.bundleURL
-        if bundleURL.pathExtension == "app" {
-            let bundled = bundleURL.appendingPathComponent("Contents/Resources/bin/ffmpeg", isDirectory: false)
-            if FileManager.default.isExecutableFile(atPath: bundled.path) {
-                return bundled
-            }
-        }
-
-        let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
-        let local = cwd.appendingPathComponent("ThirdParty/ffmpeg-install/bin/ffmpeg", isDirectory: false)
-        if FileManager.default.isExecutableFile(atPath: local.path) {
-            return local
-        }
-
-        throw FFmpegEngineError.ffmpegBinaryMissing(path: local.path)
+    private static func parseJsonArray(_ cString: UnsafeMutablePointer<CChar>?) -> [String] {
+        guard let cString else { return [] }
+        let raw = String(cString: cString)
+        guard let data = raw.data(using: .utf8) else { return [] }
+        return (try? JSONSerialization.jsonObject(with: data) as? [String]) ?? []
     }
 
-    private func runAndCapture(executable: URL, arguments: [String]) throws -> String {
-        let process = Process()
-        process.executableURL = executable
-        process.arguments = arguments
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        try process.run()
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else {
-            throw FFmpegEngineError.failed(code: process.terminationStatus, details: "无法解析 ffmpeg 输出")
+    private static func lastError() -> String {
+        guard let ptr = aff_copy_last_error() else {
+            return "unknown ffmpeg error"
         }
-        guard process.terminationStatus == 0 else {
-            throw FFmpegEngineError.failed(code: process.terminationStatus, details: output)
-        }
-        return output
-    }
-
-    private func parseMuxers(from output: String) -> Set<String> {
-        var result = Set<String>()
-        for line in output.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.contains(" E ") || trimmed.hasPrefix("E ") || trimmed.hasPrefix("Ed ") else {
-                continue
-            }
-            let fields = trimmed.split(whereSeparator: \.isWhitespace)
-            guard fields.count >= 2 else { continue }
-            let raw = String(fields[1])
-            let primary = raw.split(separator: ",").first.map(String.init) ?? raw
-            result.insert(primary.lowercased())
-        }
-        return result
-    }
-
-    private func parseEncoders(from output: String) -> Set<String> {
-        var result = Set<String>()
-        for line in output.split(separator: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard !trimmed.isEmpty else { continue }
-            guard let first = trimmed.first, first == "V" || first == "A" else { continue }
-            let fields = trimmed.split(whereSeparator: \.isWhitespace)
-            guard fields.count >= 2 else { continue }
-            result.insert(String(fields[1]).lowercased())
-        }
-        return result
-    }
-
-    private func emitProgress(from chunk: String, duration: Double?, totalFrames: Double?, callbacks: FFmpegCallbacks) {
-        let lines = chunk.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
-        for tokenLine in lines {
-            let line = String(tokenLine)
-            if line.contains("progress=end") {
-                callbacks.onProgress(FFmpegProgress(estimatedRatio: 1))
-                continue
-            }
-
-            var progress = FFmpegProgress()
-            if let t = tokenValue(for: "out_time=", in: line) ?? tokenValue(for: "time=", in: line),
-               let elapsed = parseTimeToSeconds(t)
-            {
-                let ratio = duration.flatMap { $0 > 0 ? max(0, min(1, elapsed / $0)) : nil }
-                progress = FFmpegProgress(processedTimeSeconds: elapsed, estimatedRatio: ratio)
-                callbacks.onProgress(progress)
-                continue
-            }
-
-            if let frameToken = tokenValue(for: "frame=", in: line),
-               let frame = Double(frameToken)
-            {
-                let ratio = totalFrames.flatMap { $0 > 0 ? max(0, min(1, frame / $0)) : nil }
-                callbacks.onProgress(FFmpegProgress(processedFrames: frame, estimatedRatio: ratio))
-            }
-        }
-    }
-
-    private func tokenValue(for key: String, in line: String) -> String? {
-        guard let range = line.range(of: key) else { return nil }
-        var tail = line[range.upperBound...]
-        while let first = tail.first, first == " " {
-            tail.removeFirst()
-        }
-        let token = tail.prefix { !$0.isWhitespace }
-        guard !token.isEmpty else { return nil }
-        let value = String(token)
-        return value == "N/A" ? nil : value
-    }
-
-    private func parseTimeToSeconds(_ value: String) -> Double? {
-        let parts = value.split(separator: ":")
-        if parts.count == 3 {
-            guard let h = Double(parts[0]), let m = Double(parts[1]), let s = Double(parts[2]) else {
-                return nil
-            }
-            return h * 3600 + m * 60 + s
-        }
-        return Double(value)
-    }
-
-    private func register(process: Process, for jobID: UUID) {
-        Self.runningLock.lock()
-        Self.runningProcesses[jobID] = process
-        Self.runningLock.unlock()
-    }
-
-    private func unregister(jobID: UUID) {
-        Self.runningLock.lock()
-        Self.runningProcesses.removeValue(forKey: jobID)
-        Self.runningLock.unlock()
+        let text = String(cString: ptr)
+        return text.isEmpty ? "unknown ffmpeg error" : text
     }
 }
