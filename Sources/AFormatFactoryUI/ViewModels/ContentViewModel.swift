@@ -410,6 +410,7 @@ public final class ContentViewModel: ObservableObject {
     @Published var mediaEditChapters: [MediaEditChapter] = []
     @Published var mediaEditIsProcessing = false
     @Published var mediaEditLogs: String = ""
+    var mediaEditActiveJobID: UUID?
 
     // Preview/editor state
     @Published var previewTargetFile: URL?

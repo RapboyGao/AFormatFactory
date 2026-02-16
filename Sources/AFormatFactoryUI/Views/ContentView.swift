@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 public enum AppWindowID {
@@ -78,6 +79,9 @@ public struct ContentView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .preferredColorScheme(.dark)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            viewModel.shutdownAndCleanup()
+        }
     }
 
     private var backgroundLayer: some View {

@@ -192,6 +192,8 @@ extension ContentViewModel {
                     }
                 )
             )
+            mediaEditActiveJobID = job.id
+            defer { mediaEditActiveJobID = nil }
             _ = try await engine.execute(
                 job: job,
                 callbacks: FFmpegCallbacks(

@@ -253,6 +253,39 @@ extension ContentViewModel {
         }
     }
 
+    func shutdownAndCleanup() {
+        if let mediaEditActiveJobID {
+            engine.cancel(jobID: mediaEditActiveJobID)
+        }
+
+        for id in Self.runningJobs {
+            engine.cancel(jobID: id)
+        }
+
+        for index in tasks.indices {
+            if tasks[index].status == .running || tasks[index].status == .queued {
+                tasks[index].status = .cancelled
+                tasks[index].finishedAt = Date()
+            }
+        }
+
+        let unfinishedOutputURLs = tasks
+            .filter { $0.status != .succeeded }
+            .map(\.outputURL)
+
+        for outputURL in unfinishedOutputURLs {
+            guard FileManager.default.fileExists(atPath: outputURL.path) else { continue }
+            do {
+                try FileManager.default.removeItem(at: outputURL)
+            } catch {
+                appendAppLog("退出清理失败：\(outputURL.lastPathComponent)，\(error.localizedDescription)")
+            }
+        }
+
+        Self.runningJobs.removeAll()
+        Self.cancellationRequests.removeAll()
+    }
+
     nonisolated func runTask(id: UUID) async {
         guard let context = await MainActor.run(body: { self.prepareTaskForExecution(id: id) }) else {
             return
