@@ -57,8 +57,9 @@ extension ContentViewModel {
     }
 
     func terminateSelectedTask() {
-        guard let selectedTaskID else { return }
-        terminateTask(id: selectedTaskID)
+        for id in selectedTaskIDs {
+            terminateTask(id: id)
+        }
     }
 
     func terminateTask(id: UUID) {
@@ -80,8 +81,12 @@ extension ContentViewModel {
     }
 
     func removeSelectedTask() {
-        guard let selectedTaskID else { return }
-        removeTask(id: selectedTaskID)
+        guard !selectedTaskIDs.isEmpty else { return }
+        let selected = selectedTaskIDs
+        let indices = tasks.indices.filter { selected.contains(tasks[$0].id) }.sorted(by: >)
+        for index in indices {
+            removeTask(id: tasks[index].id)
+        }
     }
 
     func removeTask(id: UUID) {
@@ -98,8 +103,9 @@ extension ContentViewModel {
         }
 
         tasks.remove(at: index)
-        if selectedTaskID == id {
-            selectedTaskID = tasks.indices.contains(index) ? tasks[index].id : tasks.last?.id
+        selectedTaskIDs.remove(id)
+        if selectedTaskIDs.isEmpty, let firstID = tasks.first?.id {
+            selectedTaskIDs = [firstID]
         }
         appendAppLog("已删除任务：\(task.inputURL.lastPathComponent)")
     }
@@ -122,12 +128,13 @@ extension ContentViewModel {
         }
         guard !removable.isEmpty else { return }
 
-        let removedSelected = removable.contains { idx in
-            tasks[idx].id == selectedTaskID
+        let removedIDs = removable.compactMap { idx in
+            tasks.indices.contains(idx) ? tasks[idx].id : nil
         }
         tasks.remove(atOffsets: IndexSet(removable))
-        if removedSelected {
-            selectedTaskID = tasks.first?.id
+        selectedTaskIDs.subtract(removedIDs)
+        if selectedTaskIDs.isEmpty, let firstID = tasks.first?.id {
+            selectedTaskIDs = [firstID]
         }
         appendAppLog("已删除 \(removable.count) 个任务。")
     }
@@ -207,8 +214,8 @@ extension ContentViewModel {
         case .audio:
             selectedAudioFiles.removeAll()
         }
-        if selectedTaskID == nil {
-            selectedTaskID = newTasks.first?.id
+        if selectedTaskIDs.isEmpty, let firstID = newTasks.first?.id {
+            selectedTaskIDs = [firstID]
         }
         appendAppLog("已添加 \(newTasks.count) 个任务到队列。")
         return newTasks.count
@@ -248,8 +255,11 @@ extension ContentViewModel {
 
     func clearFinishedTasks() {
         tasks.removeAll { $0.status == .succeeded || $0.status == .failed || $0.status == .cancelled }
-        if let selectedTaskID, tasks.contains(where: { $0.id == selectedTaskID }) == false {
-            self.selectedTaskID = tasks.first?.id
+        selectedTaskIDs = selectedTaskIDs.filter { id in
+            tasks.contains(where: { $0.id == id })
+        }
+        if selectedTaskIDs.isEmpty, let firstID = tasks.first?.id {
+            selectedTaskIDs = [firstID]
         }
     }
 

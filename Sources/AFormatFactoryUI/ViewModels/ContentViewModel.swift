@@ -430,7 +430,7 @@ public final class ContentViewModel: ObservableObject {
 
     // Queue controls
     @Published var tasks: [ConversionTask] = []
-    @Published var selectedTaskID: UUID?
+    @Published var selectedTaskIDs: Set<UUID> = []
     @Published var maxConcurrentTasks: Int = ContentViewModel.defaultConcurrentTaskCount
     @Published var isProcessingQueue = false
     @Published var appLogs = ""
@@ -459,13 +459,11 @@ public final class ContentViewModel: ObservableObject {
     }
 
     var selectedTask: ConversionTask? {
-        guard let selectedTaskID else { return nil }
-        return tasks.first(where: { $0.id == selectedTaskID })
+        tasks.first(where: { selectedTaskIDs.contains($0.id) })
     }
 
     var canTerminateSelectedTask: Bool {
-        guard let selectedTask else { return false }
-        return selectedTask.status == .queued || selectedTask.status == .running
+        tasks.contains { selectedTaskIDs.contains($0.id) && ($0.status == .queued || $0.status == .running) }
     }
 
     var maxConcurrentTaskLimit: Int {

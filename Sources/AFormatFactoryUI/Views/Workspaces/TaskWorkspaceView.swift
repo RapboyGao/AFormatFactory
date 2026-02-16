@@ -25,7 +25,7 @@ struct TaskWorkspaceView: View {
 
                     Button("删除任务") { viewModel.removeSelectedTask() }
                         .buttonStyle(MaterialActionButtonStyle())
-                        .disabled(viewModel.selectedTaskID == nil || viewModel.isProcessingQueue)
+                        .disabled(viewModel.selectedTaskIDs.isEmpty || viewModel.isProcessingQueue)
 
                     Button("终止任务") { viewModel.terminateSelectedTask() }
                         .buttonStyle(MaterialActionButtonStyle())
@@ -43,7 +43,7 @@ struct TaskWorkspaceView: View {
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(.white.opacity(0.62))
 
-                List(selection: $viewModel.selectedTaskID) {
+                List(selection: $viewModel.selectedTaskIDs) {
                     ForEach(viewModel.tasks) { task in
                         HStack(spacing: 9) {
                             RoundedRectangle(cornerRadius: 3)
