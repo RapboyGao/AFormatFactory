@@ -1,5 +1,10 @@
 // swift-tools-version: 5.10
+import Foundation
 import PackageDescription
+
+let packageRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
+let ffmpegIncludePath = packageRoot + "/ThirdParty/ffmpeg-install/include"
+let ffmpegLibraryPath = packageRoot + "/ThirdParty/ffmpeg-install/lib"
 
 let package = Package(
     name: "AFormatFactory",
@@ -17,10 +22,10 @@ let package = Package(
             path: "Sources/AFormatFactoryFFmpegC",
             publicHeadersPath: "include",
             cSettings: [
-                .unsafeFlags(["-IThirdParty/ffmpeg-install/include"])
+                .unsafeFlags(["-I\(ffmpegIncludePath)"])
             ],
             linkerSettings: [
-                .unsafeFlags(["-LThirdParty/ffmpeg-install/lib"]),
+                .unsafeFlags(["-L\(ffmpegLibraryPath)"]),
                 .linkedLibrary("avformat"),
                 .linkedLibrary("avcodec"),
                 .linkedLibrary("avfilter"),
