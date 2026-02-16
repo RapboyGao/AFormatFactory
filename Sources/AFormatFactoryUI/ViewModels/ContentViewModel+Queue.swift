@@ -72,10 +72,7 @@ extension ContentViewModel {
             Self.cancellationRequests.insert(id)
             if Self.runningJobs.contains(id) {
                 engine.cancel(jobID: id)
-                appendTaskLog(id: id, line: "已发送终止信号。")
                 appendAppLog("已请求终止运行任务：\(tasks[index].inputURL.lastPathComponent)")
-            } else {
-                appendTaskLog(id: id, line: "已记录终止请求，等待进程启动后终止。")
             }
         default:
             break
@@ -165,16 +162,14 @@ extension ContentViewModel {
         newTasks.reserveCapacity(files.count)
         for file in files {
             let output = outputURL(for: file)
+            do {
+                try ensureDirectoryExists(at: output.deletingLastPathComponent())
+            } catch {
+                appendAppLog("无法创建输出目录：\(output.deletingLastPathComponent().path)，\(error.localizedDescription)")
+                continue
+            }
             let sourceDuration = await mediaDurationSeconds(for: file)
             let totalFrames = await estimatedFrameCount(for: file, duration: sourceDuration)
-            let lines = [
-                "任务已创建。",
-                "输入：\(file.path)",
-                "输出：\(output.path)",
-                "格式：\(format.displayName)",
-                "参数：\(optionsSummary)"
-            ]
-
             let task = ConversionTask(
                 id: UUID(),
                 createdAt: Date(),
@@ -190,10 +185,19 @@ extension ContentViewModel {
                 status: .queued,
                 startedAt: nil,
                 finishedAt: nil,
-                logs: lines.joined(separator: "\n"),
-                progress: 0
+                logs: "",
+                progress: 0,
+                processedFrames: nil,
+                processedTimeSeconds: nil,
+                bitrateKbps: nil,
+                speed: nil
             )
             newTasks.append(task)
+        }
+
+        guard !newTasks.isEmpty else {
+            appendAppLog("未能创建任务：输出目录不可用。")
+            return 0
         }
 
         tasks.append(contentsOf: newTasks)
@@ -267,8 +271,9 @@ extension ContentViewModel {
             _ = try await engine.execute(
                 job: job,
                 callbacks: FFmpegCallbacks(
-                    onLog: { _, message in
+                    onLog: { level, message in
                         Task { @MainActor in
+                            guard level == .error else { return }
                             self.appendTaskLog(id: context.id, line: message.trimmingCharacters(in: .whitespacesAndNewlines))
                         }
                     },
@@ -312,7 +317,10 @@ extension ContentViewModel {
         tasks[index].status = .running
         tasks[index].startedAt = Date()
         tasks[index].progress = 0
-        appendTaskLog(id: id, line: "开始执行任务...")
+        tasks[index].processedFrames = nil
+        tasks[index].processedTimeSeconds = nil
+        tasks[index].bitrateKbps = nil
+        tasks[index].speed = nil
 
         return TaskExecutionContext(
             id: id,
@@ -332,7 +340,6 @@ extension ContentViewModel {
         tasks[index].status = .succeeded
         tasks[index].finishedAt = Date()
         tasks[index].progress = 1
-        appendTaskLog(id: id, line: "任务完成。")
     }
 
     private func markTaskFailed(id: UUID, reason: String) {
@@ -343,13 +350,12 @@ extension ContentViewModel {
         appendTaskLog(id: id, line: "任务失败：\(reason)")
     }
 
-    private func markTaskCancelled(id: UUID, reason: String) {
+    private func markTaskCancelled(id: UUID, reason _: String) {
         guard let index = indexOfTask(id: id) else { return }
         Self.cancellationRequests.remove(id)
         Self.runningJobs.remove(id)
         tasks[index].status = .cancelled
         tasks[index].finishedAt = Date()
-        appendTaskLog(id: id, line: reason)
     }
 
     private func appendTaskLog(id: UUID, line: String) {
@@ -366,6 +372,18 @@ extension ContentViewModel {
     private func updateTaskProgress(id: UUID, with progress: FFmpegProgress) {
         guard let index = indexOfTask(id: id) else { return }
         guard tasks[index].status == .running else { return }
+        if let processedFrames = progress.processedFrames, processedFrames > 0 {
+            tasks[index].processedFrames = processedFrames
+        }
+        if let processedTimeSeconds = progress.processedTimeSeconds, processedTimeSeconds >= 0 {
+            tasks[index].processedTimeSeconds = processedTimeSeconds
+        }
+        if let bitrateKbps = progress.bitrateKbps, bitrateKbps >= 0 {
+            tasks[index].bitrateKbps = bitrateKbps
+        }
+        if let speed = progress.speed, speed >= 0 {
+            tasks[index].speed = speed
+        }
         guard let ratio = progress.estimatedRatio else { return }
         if ratio > tasks[index].progress {
             tasks[index].progress = max(0, min(1, ratio))
@@ -407,7 +425,6 @@ extension ContentViewModel {
         Self.runningJobs.insert(id)
         if Self.cancellationRequests.contains(id) {
             engine.cancel(jobID: id)
-            appendTaskLog(id: id, line: "检测到终止请求，已发送终止信号。")
         }
     }
 

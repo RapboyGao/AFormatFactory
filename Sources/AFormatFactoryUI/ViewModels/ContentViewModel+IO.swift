@@ -3,6 +3,10 @@ import Foundation
 import UniformTypeIdentifiers
 
 extension ContentViewModel {
+    func ensureDirectoryExists(at directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
     func pickInputFiles() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
@@ -32,6 +36,7 @@ extension ContentViewModel {
 
         if panel.runModal() == .OK, let directory = panel.url {
             outputDirectory = directory
+            try? ensureDirectoryExists(at: directory)
             appendAppLog("输出目录：\(directory.path)")
         }
     }

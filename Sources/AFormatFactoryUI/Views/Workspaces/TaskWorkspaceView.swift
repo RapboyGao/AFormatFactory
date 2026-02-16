@@ -1,9 +1,7 @@
-import AppKit
 import SwiftUI
 
 struct TaskWorkspaceView: View {
     @ObservedObject var viewModel: ContentViewModel
-    @State private var commandPreviewTask: ConversionTask?
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -70,12 +68,6 @@ struct TaskWorkspaceView: View {
                             }
 
                             Spacer(minLength: 8)
-
-                            Button("命令") {
-                                commandPreviewTask = task
-                            }
-                            .buttonStyle(.borderless)
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                         }
                         .tag(task.id)
                     }
@@ -91,25 +83,55 @@ struct TaskWorkspaceView: View {
             .cardStyle(padding: 12)
 
             VStack(alignment: .leading, spacing: 8) {
-                Text("任务日志")
+                Text("任务详情")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
 
-                ScrollView {
-                    Text(viewModel.selectedTask?.logs ?? "请在左侧选择任务查看日志")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .font(.system(size: 12, weight: .regular, design: .monospaced))
-                        .textSelection(.enabled)
+                Group {
+                    if let task = viewModel.selectedTask {
+                        VStack(alignment: .leading, spacing: 6) {
+                            detailRow("状态", subtitle(for: task))
+                            detailRow("输入", task.inputURL.path)
+                            detailRow("输出", task.outputURL.path)
+                            detailRow("参数", task.optionsSummary)
+                            if let startedAt = task.startedAt {
+                                detailRow("开始", startedAt.formatted(date: .omitted, time: .standard))
+                            }
+                            if let finishedAt = task.finishedAt {
+                                detailRow("结束", finishedAt.formatted(date: .omitted, time: .standard))
+                            }
+                        }
                         .padding(10)
+                        .background(Color.white.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        Text("错误日志")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .padding(.top, 4)
+
+                        ScrollView {
+                            Text(task.logs.isEmpty ? "暂无错误日志" : task.logs)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .font(.system(size: 12, weight: .regular, design: .monospaced))
+                                .textSelection(.enabled)
+                                .padding(10)
+                        }
+                        .background(Color.black.opacity(0.25))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    } else {
+                        ScrollView {
+                            Text("请在左侧选择任务查看详情")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .font(.system(size: 12, weight: .regular, design: .rounded))
+                                .padding(10)
+                        }
+                        .background(Color.black.opacity(0.25))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
                 }
-                .background(Color.black.opacity(0.25))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .frame(minHeight: 350)
             }
             .frame(maxWidth: .infinity)
             .cardStyle(padding: 12)
-        }
-        .sheet(item: $commandPreviewTask) { task in
-            commandPreviewSheet(task: task)
         }
     }
 
@@ -154,45 +176,37 @@ struct TaskWorkspaceView: View {
 
     private func subtitle(for task: ConversionTask) -> String {
         if task.status == .running {
-            return "\(task.format.displayName)  ·  \(task.status.displayName) \(Int(task.progress * 100))%"
+            let ratioText = "\(Int(task.progress * 100))%"
+            let timeText = task.processedTimeSeconds.map { formatDuration(seconds: $0) } ?? "--:--"
+            let speedText = task.speed.map { String(format: "%.2fx", $0) } ?? "--x"
+            let bitrateText = task.bitrateKbps.map { String(format: "%.0f kb/s", $0) } ?? "-- kb/s"
+            let frameText = task.processedFrames.map { "帧 \(Int($0))" } ?? "帧 --"
+            return "\(task.format.displayName)  ·  \(ratioText)  ·  \(timeText)  ·  \(speedText)  ·  \(bitrateText)  ·  \(frameText)"
         }
         return "\(task.format.displayName)  ·  \(task.status.displayName)"
     }
 
-    @ViewBuilder
-    private func commandPreviewSheet(task: ConversionTask) -> some View {
-        let command = viewModel.commandText(for: task)
-        VStack(alignment: .leading, spacing: 12) {
-            Text("任务命令")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-            Text("等价 CLI（仅调试显示，不作为实际执行通道）")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.white.opacity(0.7))
-            Text(task.inputURL.lastPathComponent)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
-
-            ScrollView {
-                Text(command)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-            }
-            .background(Color.black.opacity(0.2))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            HStack {
-                Spacer()
-                Button("复制命令") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(command, forType: .string)
-                }
-                .buttonStyle(MaterialActionButtonStyle())
-            }
+    private func detailRow(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.65))
+            Text(value)
+                .font(.system(size: 12, weight: .regular, design: .rounded))
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
-        .frame(minWidth: 760, minHeight: 280)
-        .background(.ultraThinMaterial)
+    }
+
+    private func formatDuration(seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "--:--" }
+        let total = Int(seconds.rounded())
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
+        return String(format: "%02d:%02d", m, s)
     }
 }

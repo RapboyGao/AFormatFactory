@@ -131,6 +131,13 @@ extension ContentViewModel {
         let outputExt = mediaEditOutputFormat.resolvedExtension(source: input)
         let outputName = input.deletingPathExtension().lastPathComponent + "_edited." + outputExt
         let outputURL = outputDir.appendingPathComponent(outputName, isDirectory: false)
+        do {
+            try ensureDirectoryExists(at: outputDir)
+        } catch {
+            appendMediaEditLog("创建输出目录失败：\(outputDir.path)，\(error.localizedDescription)")
+            appendAppLog("创建输出目录失败：\(outputDir.path)")
+            return
+        }
 
         var metadata: [String: String] = [:]
         if let title = nonEmptyValue(mediaEditMetadataTitle) { metadata["title"] = title }

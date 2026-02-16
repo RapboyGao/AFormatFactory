@@ -307,11 +307,20 @@ struct ConversionTask: Identifiable {
     var finishedAt: Date?
     var logs: String
     var progress: Double
+    var processedFrames: Double?
+    var processedTimeSeconds: Double?
+    var bitrateKbps: Double?
+    var speed: Double?
 }
 
 @MainActor
 public final class ContentViewModel: ObservableObject {
     static let defaultConcurrentTaskCount = max(1, ProcessInfo.processInfo.activeProcessorCount)
+    static let defaultOutputDirectoryURL: URL = {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents", isDirectory: true)
+        return documents.appendingPathComponent("FFOutput", isDirectory: true)
+    }()
 
     @Published var domain: ConversionDomain = .video {
         didSet {
@@ -325,8 +334,8 @@ public final class ContentViewModel: ObservableObject {
 
     @Published var selectedVideoFiles: [URL] = []
     @Published var selectedAudioFiles: [URL] = []
-    @Published var outputLocationMode: OutputLocationMode = .sourceDirectory
-    @Published var outputDirectory: URL?
+    @Published var outputLocationMode: OutputLocationMode = .specifiedDirectory
+    @Published var outputDirectory: URL? = ContentViewModel.defaultOutputDirectoryURL
     @Published var format: ConversionFormat = .mp4
     @Published var supportedFormats: Set<ConversionFormat> = Set(ConversionFormat.allCases)
 
@@ -434,6 +443,7 @@ public final class ContentViewModel: ObservableObject {
     public init(engine: FFmpegEngineProtocol = FFmpegEngine()) {
         self.engine = engine
         applyPreset()
+        try? FileManager.default.createDirectory(at: ContentViewModel.defaultOutputDirectoryURL, withIntermediateDirectories: true)
         Task {
             await refreshSupportedFormats()
         }
