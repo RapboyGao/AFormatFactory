@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import Foundation
 import UniformTypeIdentifiers
+import AFormatFactoryFFmpegKit
 
 extension ContentViewModel {
     var canRunMediaEdit: Bool {
@@ -172,14 +173,33 @@ extension ContentViewModel {
 
         mediaEditIsProcessing = true
         appendMediaEditLog("开始处理：\(input.lastPathComponent)")
-        appendMediaEditLog(FFmpegRunner.commandString(arguments: args))
+        appendMediaEditLog(FFmpegEngine.commandString(arguments: args))
 
         do {
-            try await runner.runCustom(arguments: args) { [weak self] message in
-                Task { @MainActor in
-                    self?.appendMediaEditLog(message.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
+            var extra = args
+            if extra.count >= 4 {
+                extra.removeFirst(3)
+                extra.removeLast()
             }
+            let job = FFmpegJob(
+                id: UUID(),
+                input: input,
+                output: outputURL,
+                overwriteExisting: mediaEditOverwriteExisting,
+                arguments: extra
+            )
+            _ = try await engine.execute(
+                job: job,
+                callbacks: FFmpegCallbacks(
+                    onLog: { [weak self] _, message in
+                        Task { @MainActor in
+                            self?.appendMediaEditLog(message.trimmingCharacters(in: .whitespacesAndNewlines))
+                        }
+                    },
+                    onProgress: { _ in },
+                    onState: { _ in }
+                )
+            )
             appendMediaEditLog("处理完成：\(outputURL.path)")
             appendAppLog("媒体编辑完成：\(outputURL.lastPathComponent)")
         } catch {

@@ -2,3 +2,6 @@
 .swiftpm/
 .DS_Store
 dist/
+ThirdParty/ffmpeg-build/
+ThirdParty/ffmpeg-install/
+ThirdParty/ffmpeg/source/.git/

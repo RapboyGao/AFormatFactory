@@ -165,6 +165,9 @@ struct TaskWorkspaceView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("任务命令")
                 .font(.system(size: 16, weight: .bold, design: .rounded))
+            Text("等价 CLI（仅调试显示，不作为实际执行通道）")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.white.opacity(0.7))
             Text(task.inputURL.lastPathComponent)
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(.secondary)

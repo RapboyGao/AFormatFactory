@@ -1,4 +1,5 @@
 import Foundation
+import AFormatFactoryFFmpegKit
 
 enum ConversionDomain: String, CaseIterable, Identifiable {
     case video
@@ -14,11 +15,6 @@ enum ConversionDomain: String, CaseIterable, Identifiable {
             return "音频格式转换"
         }
     }
-}
-
-struct FFmpegCapabilities {
-    let muxers: Set<String>
-    let encoders: Set<String>
 }
 
 enum ConversionFormat: String, CaseIterable, Identifiable {

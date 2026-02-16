@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import AFormatFactoryFFmpegKit
 
 private struct TaskExecutionContext {
     let id: UUID
@@ -8,6 +9,8 @@ private struct TaskExecutionContext {
     let format: ConversionFormat
     let overwriteExisting: Bool
     let extraArguments: [String]
+    let sourceDurationSeconds: Double?
+    let estimatedTotalFrames: Double?
 }
 
 actor AsyncSemaphore {
@@ -40,18 +43,17 @@ actor AsyncSemaphore {
 }
 
 extension ContentViewModel {
-    private static var runningProcesses: [UUID: Process] = [:]
+    private static var runningJobs: Set<UUID> = []
     private static var cancellationRequests: Set<UUID> = []
 
     func commandText(for task: ConversionTask) -> String {
-        let args = FFmpegRunner.commandArguments(
+        let args = FFmpegEngine.commandArguments(
             input: task.inputURL,
             output: task.outputURL,
-            format: task.format,
             overwriteExisting: task.overwriteExisting,
-            extraArguments: task.extraArguments
+            extraArguments: task.format.extraArguments + task.extraArguments
         )
-        return FFmpegRunner.commandString(arguments: args)
+        return FFmpegEngine.commandString(arguments: args)
     }
 
     func terminateSelectedTask() {
@@ -68,8 +70,8 @@ extension ContentViewModel {
             appendAppLog("已终止排队任务：\(tasks[index].inputURL.lastPathComponent)")
         case .running:
             Self.cancellationRequests.insert(id)
-            if let process = Self.runningProcesses[id] {
-                process.terminate()
+            if Self.runningJobs.contains(id) {
+                engine.cancel(jobID: id)
                 appendTaskLog(id: id, line: "已发送终止信号。")
                 appendAppLog("已请求终止运行任务：\(tasks[index].inputURL.lastPathComponent)")
             } else {
@@ -253,35 +255,37 @@ extension ContentViewModel {
         }
 
         do {
-            try await FFmpegRunner().transcode(
+            let job = FFmpegJob(
+                id: context.id,
                 input: context.inputURL,
                 output: context.outputURL,
-                format: context.format,
                 overwriteExisting: context.overwriteExisting,
-                extraArguments: context.extraArguments
-                , didStartProcess: { [weak self] process in
-                    Task { @MainActor in
-                        self?.registerRunningProcess(process, for: context.id)
+                arguments: context.format.extraArguments + context.extraArguments,
+                estimatedDurationSeconds: context.sourceDurationSeconds,
+                estimatedTotalFrames: context.estimatedTotalFrames
+            )
+            _ = try await engine.execute(
+                job: job,
+                callbacks: FFmpegCallbacks(
+                    onLog: { _, message in
+                        Task { @MainActor in
+                            self.appendTaskLog(id: context.id, line: message.trimmingCharacters(in: .whitespacesAndNewlines))
+                        }
+                    },
+                    onProgress: { progress in
+                        Task { @MainActor in
+                            self.updateTaskProgress(id: context.id, with: progress)
+                        }
+                    },
+                    onState: { state in
+                        Task { @MainActor in
+                            self.handleTaskStateTransition(id: context.id, state: state)
+                        }
                     }
-                }
-            ) { [weak self] message in
-                Task { @MainActor in
-                    self?.updateTaskProgress(id: context.id, fromLogChunk: message)
-                    self?.appendTaskLog(id: context.id, line: message.trimmingCharacters(in: .whitespacesAndNewlines))
-                }
-            }
-
-            await MainActor.run {
-                self.unregisterRunningProcess(for: context.id)
-                if self.isCancellationRequested(id: context.id) {
-                    self.markTaskCancelled(id: context.id, reason: "任务已终止。")
-                } else {
-                    self.markTaskSucceeded(id: context.id)
-                }
-            }
+                )
+            )
         } catch {
             await MainActor.run {
-                self.unregisterRunningProcess(for: context.id)
                 if self.isCancellationRequested(id: context.id) {
                     self.markTaskCancelled(id: context.id, reason: "任务已终止。")
                 } else {
@@ -316,7 +320,9 @@ extension ContentViewModel {
             outputURL: tasks[index].outputURL,
             format: tasks[index].format,
             overwriteExisting: tasks[index].overwriteExisting,
-            extraArguments: tasks[index].extraArguments
+            extraArguments: tasks[index].extraArguments,
+            sourceDurationSeconds: tasks[index].sourceDurationSeconds,
+            estimatedTotalFrames: tasks[index].estimatedTotalFrames
         )
     }
 
@@ -340,7 +346,7 @@ extension ContentViewModel {
     private func markTaskCancelled(id: UUID, reason: String) {
         guard let index = indexOfTask(id: id) else { return }
         Self.cancellationRequests.remove(id)
-        Self.runningProcesses.removeValue(forKey: id)
+        Self.runningJobs.remove(id)
         tasks[index].status = .cancelled
         tasks[index].finishedAt = Date()
         appendTaskLog(id: id, line: reason)
@@ -357,64 +363,13 @@ extension ContentViewModel {
         }
     }
 
-    private func updateTaskProgress(id: UUID, fromLogChunk chunk: String) {
+    private func updateTaskProgress(id: UUID, with progress: FFmpegProgress) {
         guard let index = indexOfTask(id: id) else { return }
         guard tasks[index].status == .running else { return }
-
-        let parts = chunk.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
-        for part in parts {
-            let line = String(part)
-            if line.contains("progress=end") {
-                tasks[index].progress = 1
-                continue
-            }
-
-            if let timeToken = tokenValue(for: "out_time=", in: line) ?? tokenValue(for: "time=", in: line),
-               let elapsed = parseTimeToSeconds(timeToken),
-               let duration = tasks[index].sourceDurationSeconds,
-               duration > 0
-            {
-                let ratio = max(0, min(1, elapsed / duration))
-                if ratio > tasks[index].progress {
-                    tasks[index].progress = ratio
-                }
-                continue
-            }
-
-            if let frameToken = tokenValue(for: "frame=", in: line),
-               let frame = Double(frameToken),
-               let totalFrames = tasks[index].estimatedTotalFrames,
-               totalFrames > 0
-            {
-                let ratio = max(0, min(1, frame / totalFrames))
-                if ratio > tasks[index].progress {
-                    tasks[index].progress = ratio
-                }
-            }
+        guard let ratio = progress.estimatedRatio else { return }
+        if ratio > tasks[index].progress {
+            tasks[index].progress = max(0, min(1, ratio))
         }
-    }
-
-    private func tokenValue(for key: String, in line: String) -> String? {
-        guard let range = line.range(of: key) else { return nil }
-        var tail = line[range.upperBound...]
-        while let first = tail.first, first == " " {
-            tail.removeFirst()
-        }
-        let token = tail.prefix { !$0.isWhitespace }
-        guard !token.isEmpty else { return nil }
-        let value = String(token)
-        return value == "N/A" ? nil : value
-    }
-
-    private func parseTimeToSeconds(_ value: String) -> Double? {
-        let parts = value.split(separator: ":")
-        if parts.count == 3 {
-            guard let h = Double(parts[0]), let m = Double(parts[1]), let s = Double(parts[2]) else {
-                return nil
-            }
-            return h * 3600 + m * 60 + s
-        }
-        return Double(value)
     }
 
     private func mediaDurationSeconds(for file: URL) async -> Double? {
@@ -448,19 +403,43 @@ extension ContentViewModel {
         tasks.firstIndex(where: { $0.id == id })
     }
 
-    private func registerRunningProcess(_ process: Process, for id: UUID) {
-        Self.runningProcesses[id] = process
+    private func registerRunningJob(for id: UUID) {
+        Self.runningJobs.insert(id)
         if Self.cancellationRequests.contains(id) {
-            process.terminate()
+            engine.cancel(jobID: id)
             appendTaskLog(id: id, line: "检测到终止请求，已发送终止信号。")
         }
     }
 
-    private func unregisterRunningProcess(for id: UUID) {
-        Self.runningProcesses.removeValue(forKey: id)
+    private func unregisterRunningJob(for id: UUID) {
+        Self.runningJobs.remove(id)
     }
 
     private func isCancellationRequested(id: UUID) -> Bool {
         Self.cancellationRequests.contains(id)
+    }
+
+    private func handleTaskStateTransition(id: UUID, state: FFmpegExecutionState) {
+        switch state {
+        case .started:
+            registerRunningJob(for: id)
+        case .completed:
+            unregisterRunningJob(for: id)
+            if isCancellationRequested(id: id) {
+                markTaskCancelled(id: id, reason: "任务已终止。")
+            } else {
+                markTaskSucceeded(id: id)
+            }
+        case let .failed(reason):
+            unregisterRunningJob(for: id)
+            if isCancellationRequested(id: id) {
+                markTaskCancelled(id: id, reason: "任务已终止。")
+            } else {
+                markTaskFailed(id: id, reason: reason)
+            }
+        case .cancelled:
+            unregisterRunningJob(for: id)
+            markTaskCancelled(id: id, reason: "任务已终止。")
+        }
     }
 }

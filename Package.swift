@@ -8,11 +8,23 @@ let package = Package(
     ],
     products: [
         .library(name: "AFormatFactoryUI", targets: ["AFormatFactoryUI"]),
+        .library(name: "AFormatFactoryFFmpegKit", targets: ["AFormatFactoryFFmpegKit"]),
         .executable(name: "AFormatFactory", targets: ["AFormatFactoryApp"])
     ],
     targets: [
         .target(
+            name: "AFormatFactoryFFmpegC",
+            path: "Sources/AFormatFactoryFFmpegC",
+            publicHeadersPath: "include"
+        ),
+        .target(
+            name: "AFormatFactoryFFmpegKit",
+            dependencies: ["AFormatFactoryFFmpegC"],
+            path: "Sources/AFormatFactoryFFmpegKit"
+        ),
+        .target(
             name: "AFormatFactoryUI",
+            dependencies: ["AFormatFactoryFFmpegKit"],
             path: "Sources/AFormatFactoryUI"
         ),
         .executableTarget(

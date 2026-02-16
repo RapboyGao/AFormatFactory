@@ -31,6 +31,7 @@ if [[ ! -f "$ICON_FILE" ]]; then
 fi
 
 echo "[2/5] Building release executable..."
+(cd "$ROOT_DIR" && ./Scripts/build_ffmpeg_libs.sh)
 (cd "$ROOT_DIR" && swift build -c "$CONFIGURATION")
 
 if [[ ! -x "$EXECUTABLE_PATH" ]]; then
@@ -46,27 +47,14 @@ cp "$ICON_FILE" "$RESOURCES_DIR/AppIcon.icns"
 
 FFMPEG_BIN_DIR="$RESOURCES_DIR/bin"
 FFMPEG_BIN_PATH="$FFMPEG_BIN_DIR/ffmpeg"
-FFMPEG_ZIP_TMP="$ROOT_DIR/.build/ffmpeg.zip"
-if [[ ! -x "$FFMPEG_BIN_PATH" ]]; then
-  echo "[3.1/5] Fetching bundled ffmpeg..."
-  ARCH="$(uname -m)"
-  if [[ "$ARCH" == "arm64" ]]; then
-    FFMPEG_URL="https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip"
-  elif [[ "$ARCH" == "x86_64" ]]; then
-    FFMPEG_URL="https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/release/ffmpeg.zip"
-  else
-    echo "Unsupported CPU architecture: $ARCH" >&2
-    exit 1
-  fi
-  mkdir -p "$FFMPEG_BIN_DIR"
-  curl -L --fail --silent --show-error "$FFMPEG_URL" -o "$FFMPEG_ZIP_TMP"
-  if [[ ! -s "$FFMPEG_ZIP_TMP" ]]; then
-    echo "Downloaded ffmpeg archive is empty." >&2
-    exit 1
-  fi
-  /usr/bin/unzip -o "$FFMPEG_ZIP_TMP" -d "$FFMPEG_BIN_DIR" >/dev/null
+mkdir -p "$FFMPEG_BIN_DIR"
+if [[ -x "$ROOT_DIR/ThirdParty/ffmpeg-install/bin/ffmpeg" ]]; then
+  cp "$ROOT_DIR/ThirdParty/ffmpeg-install/bin/ffmpeg" "$FFMPEG_BIN_PATH"
   chmod +x "$FFMPEG_BIN_PATH"
-  rm -f "$FFMPEG_ZIP_TMP"
+else
+  echo "Missing ffmpeg binary at ThirdParty/ffmpeg-install/bin/ffmpeg" >&2
+  echo "Run: ./Scripts/build_ffmpeg_libs.sh ENABLE_PROGRAMS=1" >&2
+  exit 1
 fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<PLIST

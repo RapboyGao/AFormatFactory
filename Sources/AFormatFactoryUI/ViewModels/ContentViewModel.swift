@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import AFormatFactoryFFmpegKit
 
 enum VideoRateControl: String, CaseIterable, Identifiable, Codable {
     case constantQuality
@@ -424,13 +425,14 @@ public final class ContentViewModel: ObservableObject {
     @Published var isProcessingQueue = false
     @Published var appLogs = ""
 
-    let runner = FFmpegRunner()
+    let engine: FFmpegEngineProtocol
     var capabilities: FFmpegCapabilities?
     var previewUndoStack: [PreviewSnapshot] = []
     var previewRedoStack: [PreviewSnapshot] = []
     var isSyncingPreviewState = false
 
-    public init() {
+    public init(engine: FFmpegEngineProtocol = FFmpegEngine()) {
+        self.engine = engine
         applyPreset()
         Task {
             await refreshSupportedFormats()

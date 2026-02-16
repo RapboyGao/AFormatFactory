@@ -1,13 +1,13 @@
 # AFormatFactory (macOS)
 
-基于 SwiftUI + FFmpeg 的简易格式工厂。
+基于 SwiftUI + FFmpeg 源码构建产物的简易格式工厂。
 
 ## 功能
 - 批量选择输入文件
 - 选择输出目录
 - 选择输出格式（按内置 ffmpeg 实际能力动态显示）
 - 调用 FFmpeg 转码并显示日志
-- 不依赖系统 FFmpeg：仅使用应用内 FFmpeg（二进制缺失时自动下载）
+- 不依赖系统 FFmpeg：使用项目内 `ThirdParty/ffmpeg` 源码本地构建产物
 - 高级参数可调：视频 CRF/码率/FPS，音频码率/采样率/声道，覆盖同名文件开关
 - 新增：编码器选择（自动/H.264/H.265/AV1）、分辨率缩放（原始/4K/2K/1080p/720p/480p）、参数预设（高质量/均衡/小体积）
 - 任务队列：一次可添加多个文件（每个源文件生成独立任务），每个任务独立日志，并支持多任务并发执行
@@ -15,11 +15,12 @@
 ## 环境
 - macOS 13+
 - Xcode 15+
-- 网络可用（首次下载应用内 FFmpeg 时需要）
+- 首次同步 FFmpeg 源码时需网络
 
 ## 开发运行
 
 ```bash
+./Scripts/build_ffmpeg_libs.sh
 swift run
 ```
 
@@ -62,7 +63,12 @@ SIGN_APP=0 ./Scripts/build_app.sh
 - 默认会在首次打包时自动生成 `Assets/AppIcon.icns`。
 - 你也可以手动替换该文件后重新打包。
 
-## FFmpeg 来源说明
-- 打包时会自动下载并内置到：`AFormatFactory.app/Contents/Resources/bin/ffmpeg`
-- 运行时若检测不到该文件，会自动在线下载到应用目录后再执行转码
-- 转码流程不会使用系统路径（`/opt/homebrew/bin/ffmpeg` 等）
+## FFmpeg 来源与许可
+- FFmpeg 源码位于：`ThirdParty/ffmpeg/source`（固定 tag，见 `ThirdParty/ffmpeg/VERSION.txt`）
+- 本地构建产物位于：`ThirdParty/ffmpeg-install`
+- 打包时会内置：`AFormatFactory.app/Contents/Resources/bin/ffmpeg`
+- 默认构建策略：`LGPL 优先（--disable-gpl --disable-nonfree）`
+- 同步源码：
+```bash
+./Scripts/sync_ffmpeg_source.sh
+```

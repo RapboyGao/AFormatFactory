@@ -1,4 +1,5 @@
 import Foundation
+import AFormatFactoryFFmpegKit
 
 extension ContentViewModel {
     var availableVideoEncoders: [VideoEncoderOption] {
@@ -25,7 +26,7 @@ extension ContentViewModel {
 
     func refreshSupportedFormats() async {
         do {
-            let capabilities = try await runner.detectCapabilities()
+            let capabilities = try await engine.detectCapabilities()
             let supported = Set(ConversionFormat.allCases.filter { $0.isSupported(by: capabilities) })
             if supported.isEmpty {
                 appendAppLog("警告：未探测到可用格式，已保留默认列表。")
