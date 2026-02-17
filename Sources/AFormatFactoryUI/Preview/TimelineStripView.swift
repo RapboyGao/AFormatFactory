@@ -10,12 +10,13 @@ struct TimelineStripView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("时间轴")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(.white.opacity(0.92))
 
             if totalDuration > 0 {
                 HStack(spacing: 10) {
                     Text("入点")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.9))
                     Slider(value: $start, in: 0...totalDuration)
                     Text(secondsString(start))
                         .font(.system(size: 11, weight: .regular, design: .monospaced))
@@ -25,6 +26,7 @@ struct TimelineStripView: View {
                 HStack(spacing: 10) {
                     Text("出点")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.9))
                     Slider(
                         value: Binding(
                             get: { end ?? totalDuration },
@@ -40,6 +42,7 @@ struct TimelineStripView: View {
                 HStack(spacing: 10) {
                     Text("播放")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.9))
                     Slider(value: $playhead, in: 0...totalDuration)
                     Text(secondsString(playhead))
                         .font(.system(size: 11, weight: .regular, design: .monospaced))
@@ -48,11 +51,15 @@ struct TimelineStripView: View {
             } else {
                 Text("无可用时长")
                     .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.white.opacity(0.8))
             }
         }
         .padding(10)
-        .background(Color.black.opacity(0.2))
+        .background(Color.black.opacity(0.36))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 

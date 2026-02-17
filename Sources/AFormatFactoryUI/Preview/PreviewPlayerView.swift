@@ -57,8 +57,8 @@ private struct PlayerHostView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
-        view.controlsStyle = .floating
-        view.showsFullScreenToggleButton = true
+        view.controlsStyle = .none
+        view.showsFullScreenToggleButton = false
         view.videoGravity = .resizeAspect
         view.player = player
         return view

@@ -43,6 +43,8 @@ public struct PreviewEditorWindowView: View {
         }
         .padding(12)
         .background(backgroundLayer)
+        .preferredColorScheme(.dark)
+        .tint(.cyan)
         .onAppear {
             viewModel.refreshPreviewTargetIfNeeded()
             viewModel.applyParametersToPreview()
@@ -67,6 +69,7 @@ public struct PreviewEditorWindowView: View {
         HStack(spacing: 8) {
             Text("预览编辑")
                 .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
 
             Picker("编辑模式", selection: $viewModel.editorMode) {
                 ForEach(PreviewEditorMode.allCases) { mode in
@@ -99,13 +102,13 @@ public struct PreviewEditorWindowView: View {
             HStack(spacing: 8) {
                 Text("预览目标")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.white.opacity(0.96))
 
                 if viewModel.domain == .video {
                     HStack(spacing: 6) {
                         Text("裁剪比例")
                             .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(.white.opacity(0.9))
                         ForEach(PreviewAspectPreset.allCases) { preset in
                             Button(preset.displayName) { viewModel.previewAspectPreset = preset }
                                 .buttonStyle(MaterialActionButtonStyle())
@@ -124,7 +127,7 @@ public struct PreviewEditorWindowView: View {
             if viewModel.selectedFiles.isEmpty {
                 Text("当前功能区还没有输入文件")
                     .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.white.opacity(0.78))
                     .padding(.vertical, 4)
             } else {
                 ScrollView(.horizontal) {
@@ -146,6 +149,7 @@ public struct PreviewEditorWindowView: View {
             HStack {
                 Text("滤镜链")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
 
                 Button("+视频滤镜") { viewModel.addFilterNode(FilterNode(kind: .eq)) }
                     .buttonStyle(MaterialActionButtonStyle())
@@ -159,7 +163,7 @@ public struct PreviewEditorWindowView: View {
             if viewModel.filterGraph.videoNodes.isEmpty && viewModel.filterGraph.audioNodes.isEmpty {
                 Text("暂无自定义滤镜节点")
                     .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.58))
+                    .foregroundStyle(.white.opacity(0.78))
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) {
@@ -175,7 +179,11 @@ public struct PreviewEditorWindowView: View {
             }
         }
         .padding(10)
-        .background(Color.black.opacity(0.2))
+        .background(Color.black.opacity(0.36))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
@@ -190,6 +198,7 @@ public struct PreviewEditorWindowView: View {
 
             Text("\(isVideo ? "V" : "A") · \(node.kind.displayName)")
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
                 .frame(width: 120, alignment: .leading)
 
             Text(node.params.isEmpty ? "默认参数" : node.params.map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ":"))
@@ -204,9 +213,13 @@ public struct PreviewEditorWindowView: View {
     }
 
     private var backgroundLayer: some View {
-        Rectangle()
-            .fill(.ultraThinMaterial)
-            .ignoresSafeArea()
+        ZStack {
+            Color(red: 0.08, green: 0.1, blue: 0.14)
+                .ignoresSafeArea()
+            Rectangle()
+                .fill(.ultraThinMaterial.opacity(0.25))
+                .ignoresSafeArea()
+        }
     }
 }
 
