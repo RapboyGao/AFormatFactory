@@ -17,7 +17,7 @@ struct PreviewPlayerView: View {
                 .fill(Color.black.opacity(0.3))
 
             if url != nil {
-                VideoPlayer(player: session.player)
+                PlayerHostView(player: session.player)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay {
                         if showCropOverlay {
@@ -49,6 +49,25 @@ struct PreviewPlayerView: View {
             }
         }
         .frame(minHeight: 260)
+    }
+}
+
+private struct PlayerHostView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.controlsStyle = .floating
+        view.showsFullScreenToggleButton = true
+        view.videoGravity = .resizeAspect
+        view.player = player
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player !== player {
+            nsView.player = player
+        }
     }
 }
 
