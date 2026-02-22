@@ -22,6 +22,7 @@ public struct PreviewEditorWindowView: View {
                     transform: $viewModel.previewTransformState,
                     playhead: $viewModel.previewPlayheadSeconds,
                     isPlaying: $viewModel.isPreviewPlaying,
+                    duration: previewSession.durationSeconds,
                     showCropOverlay: viewModel.editorMode == .crop
                 )
             } else {
