@@ -7,7 +7,6 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("missing manifest dir"));
     let project_root = manifest_dir
         .parent()
-        .and_then(|p| p.parent())
         .expect("failed to resolve project root")
         .to_path_buf();
 

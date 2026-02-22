@@ -7,7 +7,7 @@
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
     "devUrl": "http://localhost:1420",
-    "frontendDist": "../src"
+    "frontendDist": "../vue"
   },
   "app": {
     "windows": [

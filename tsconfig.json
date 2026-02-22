@@ -5,7 +5,7 @@
     "moduleResolution": "Bundler",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["vue/*"]
     },
     "strict": true,
     "skipLibCheck": true,
@@ -17,5 +17,5 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node", "vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "src/**/*.vue"]
+  "include": ["vue/**/*.ts", "vue/**/*.tsx", "vue/**/*.d.ts", "vue/**/*.vue"]
 }

@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [vue(), vuetify({ autoImport: true })],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src')
+      '@': path.resolve(__dirname, 'vue')
     }
   },
   clearScreen: false,
