@@ -5,11 +5,16 @@
   "type": "module",
   "packageManager": "pnpm@10.6.0",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "build:target": "node ./Scripts/build_target.mjs tauri",
+    "build:target:tauri": "node ./Scripts/build_target.mjs tauri",
+    "build:target:swiftui": "node ./Scripts/build_target.mjs swiftui",
+    "build:target:all": "node ./Scripts/build_target.mjs all",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "swiftui:run": "swift run",
+    "swiftui:build": "bash ./Scripts/swiftui_build.sh",
+    "swiftui:build:no-open": "OPEN_AFTER_BUILD=0 bash ./Scripts/swiftui_build.sh",
+    "swiftui:build:open": "OPEN_AFTER_BUILD=1 bash ./Scripts/swiftui_build.sh"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

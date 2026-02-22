@@ -85,22 +85,43 @@ SIGN_APP=0 ./Scripts/build_app.sh
 - Pinia + Vue Router
 - pnpm
 
+## Unified Build Targets
+- macOS: supports both `tauri` and `swiftui` targets.
+- Non-macOS: supports `tauri` target only.
+
+Use unified scripts:
+```bash
+pnpm run build:target:tauri
+pnpm run build:target:swiftui
+pnpm run build:target:all
+```
+
+Or call wrappers in `Scripts/`:
+```bash
+./Scripts/build_target.sh tauri
+./Scripts/build_target.sh swiftui
+./Scripts/build_target.sh all
+```
+
+Windows wrapper:
+```bat
+Scripts\build_target.bat tauri
+```
+
 ## Run
 ```bash
-cd /Users/albert/Documents/AFormatFactory/tauri-app
 pnpm install
 pnpm tauri:dev
 ```
 
 ## Build frontend only
 ```bash
-cd /Users/albert/Documents/AFormatFactory/tauri-app
 pnpm build
 ```
 
 ## Architecture
-- Frontend: `/Users/albert/Documents/AFormatFactory/tauri-app/src`
-- Tauri backend: `/Users/albert/Documents/AFormatFactory/tauri-app/src-tauri/src`
+- Frontend: `/Users/albert/Documents/AFormatFactory/vue`
+- Tauri backend: `/Users/albert/Documents/AFormatFactory/src-tauri/src`
 - FFmpeg C API bridge (existing project code, reused):
   - `/Users/albert/Documents/AFormatFactory/Sources/AFormatFactoryFFmpegC/AFormatFactoryFFmpegC.c`
   - `/Users/albert/Documents/AFormatFactory/Sources/AFormatFactoryFFmpegC/AFormatFactoryFFmpegC_MediaEdit.c`
