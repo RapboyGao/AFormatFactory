@@ -5,3 +5,7 @@ dist/
 ThirdParty/ffmpeg-build/
 ThirdParty/ffmpeg-install/
 ThirdParty/ffmpeg/source/.git/
+tauri-app/node_modules/
+tauri-app/dist/
+tauri-app/src-tauri/target/
+tauri-app/src-tauri/gen/
