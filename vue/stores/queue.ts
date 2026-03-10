@@ -59,6 +59,10 @@ export const useQueueStore = defineStore('queue', {
       await api.deleteTask(id);
       await this.refreshTasks();
     },
+    async reorderTasks(orderedIds: string[]): Promise<void> {
+      await api.reorderTasks(orderedIds);
+      await this.refreshTasks();
+    },
     async applyConcurrency(value: number): Promise<void> {
       await api.setConcurrency(value);
       this.concurrency = value;

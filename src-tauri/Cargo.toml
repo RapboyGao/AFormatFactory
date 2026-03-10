@@ -22,6 +22,7 @@ tauri = { version = "2.0.0", features = [] }
 thiserror = "2.0"
 tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 uuid = { version = "1.8", features = ["v4", "serde"] }
+rfd = "0.15"
 
 [features]
 default = ["custom-protocol"]

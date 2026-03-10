@@ -10,6 +10,9 @@ export const api = {
   listTasks: () => invoke<QueueTask[]>('list_tasks'),
   setConcurrency: (value: number) => invoke<void>('set_concurrency', { value }),
   getConcurrency: () => invoke<number>('get_concurrency'),
+  pickInputFiles: () => invoke<string[]>('pick_input_files'),
+  pickOutputDirectory: () => invoke<string | null>('pick_output_directory'),
+  reorderTasks: (orderedIds: string[]) => invoke<void>('reorder_tasks', { orderedIds }),
   detectCapabilities: () => invoke<{ muxers: string[]; encoders: string[] }>('detect_capabilities'),
   runMediaEdit: (request: MediaEditRequest) => invoke<void>('run_media_edit', { request })
 };

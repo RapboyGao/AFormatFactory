@@ -9,12 +9,29 @@
 
       <v-row>
         <v-col cols="12" lg="7">
+          <div class="d-flex ga-2 mb-2">
+            <v-menu location="bottom start">
+              <template #activator="{ props: menuProps }">
+                <v-btn v-bind="menuProps" variant="tonal" prepend-icon="mdi-file-plus-outline">输入文件</v-btn>
+              </template>
+              <v-list density="compact" min-width="220">
+                <v-list-item prepend-icon="mdi-file-multiple-outline" title="从文件对话框选择" @click="selectInputFiles" />
+                <v-list-item prepend-icon="mdi-delete-sweep-outline" title="清空已选输入文件" :disabled="!selectedInputs.length" @click="clearInputs" />
+              </v-list>
+            </v-menu>
+            <v-btn variant="tonal" prepend-icon="mdi-folder-open-outline" @click="selectOutputDirectory" :disabled="outputMode === 'source'">
+              选择输出目录
+            </v-btn>
+            <v-btn variant="tonal" prepend-icon="mdi-monitor-eye" @click="openPreviewEditor" :disabled="!selectedInputs.length">
+              打开预览编辑
+            </v-btn>
+          </div>
           <v-textarea
             v-model="inputText"
             label="输入文件（每行一个绝对路径）"
             variant="outlined"
             rows="8"
-            hint="支持一次添加多个源文件，每个源文件将生成一个任务。"
+            hint="支持手动粘贴路径，或使用上方“输入文件”菜单选择。"
             persistent-hint
           />
         </v-col>
@@ -43,17 +60,28 @@
       <div class="text-subtitle-1 mb-2">已选输入文件 ({{ selectedInputs.length }})</div>
       <v-sheet border rounded="lg" class="pa-2 mb-4" min-height="72">
         <div v-if="!selectedInputs.length" class="text-medium-emphasis">尚未选择输入文件</div>
-        <v-chip
-          v-for="file in selectedInputs"
-          :key="file"
-          closable
-          class="mr-2 mb-2"
-          size="small"
-          @click:close="removeInput(file)"
-        >
-          {{ file }}
-        </v-chip>
+        <v-list v-else density="compact" class="py-0">
+          <v-list-item v-for="(file, index) in selectedInputs" :key="file" class="px-1">
+            <template #prepend>
+              <div class="text-caption text-medium-emphasis mr-2" style="width: 26px">{{ index + 1 }}</div>
+            </template>
+            <v-list-item-title class="text-body-2">{{ file }}</v-list-item-title>
+            <template #append>
+              <v-btn size="small" icon="mdi-close" variant="text" @click="removeInput(file)" />
+            </template>
+          </v-list-item>
+        </v-list>
       </v-sheet>
+
+      <div class="d-flex ga-2 mb-4">
+        <v-btn variant="tonal" prepend-icon="mdi-content-save-outline" @click="saveTemplate">保存模板</v-btn>
+        <v-btn variant="tonal" prepend-icon="mdi-folder-download-outline" @click="loadTemplate">加载模板</v-btn>
+        <v-btn variant="tonal" prepend-icon="mdi-tune-variant" @click="applyPreviewEdits" :disabled="!selectedInputs.length">
+          应用预览参数
+        </v-btn>
+      </div>
+
+      <v-alert v-if="copyHint" type="warning" variant="tonal" density="compact" class="mb-4">{{ copyHint }}</v-alert>
 
       <v-expansion-panels multiple variant="accordion">
         <v-expansion-panel title="基础参数">
@@ -82,32 +110,16 @@
               已开启视频流 Copy，重编码参数将自动忽略。
             </v-alert>
             <v-row v-if="!copyVideoStream">
-              <v-col cols="12" md="2">
-                <v-select v-model="videoEncoder" :items="videoEncoders" label="视频编码器" variant="outlined" />
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-select v-model="videoPreset" :items="videoPresets" label="编码预设" variant="outlined" />
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-select v-model="videoScalePreset" :items="videoScalePresets" label="分辨率" variant="outlined" />
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-select v-model="videoRateControl" :items="videoRateControls" label="码控模式" variant="outlined" />
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-text-field v-model="videoFrameRate" label="帧率 (-r)" variant="outlined" />
-              </v-col>
-              <v-col cols="12" md="2">
-                <v-switch v-model="enableDeinterlace" label="去隔行" inset />
-              </v-col>
+              <v-col cols="12" md="2"><v-select v-model="videoEncoder" :items="videoEncoders" label="视频编码器" variant="outlined" /></v-col>
+              <v-col cols="12" md="2"><v-select v-model="videoPreset" :items="videoPresets" label="编码预设" variant="outlined" /></v-col>
+              <v-col cols="12" md="2"><v-select v-model="videoScalePreset" :items="videoScalePresets" label="分辨率" variant="outlined" /></v-col>
+              <v-col cols="12" md="2"><v-select v-model="videoRateControl" :items="videoRateControls" label="码控模式" variant="outlined" /></v-col>
+              <v-col cols="12" md="2"><v-text-field v-model="videoFrameRate" label="帧率 (-r)" variant="outlined" /></v-col>
+              <v-col cols="12" md="2"><v-switch v-model="enableDeinterlace" label="去隔行" inset /></v-col>
             </v-row>
             <v-row v-if="!copyVideoStream">
-              <v-col cols="12" md="2" v-if="videoRateControl === 'crf'">
-                <v-text-field v-model="videoCRF" label="CRF" variant="outlined" />
-              </v-col>
-              <v-col cols="12" md="2" v-else>
-                <v-text-field v-model="videoBitrateKbps" label="视频码率(kbps)" variant="outlined" />
-              </v-col>
+              <v-col cols="12" md="2" v-if="videoRateControl === 'crf'"><v-text-field v-model="videoCRF" label="CRF" variant="outlined" /></v-col>
+              <v-col cols="12" md="2" v-else><v-text-field v-model="videoBitrateKbps" label="视频码率(kbps)" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="videoMaxBitrateKbps" label="最大码率(kbps)" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="videoBufferSizeKbps" label="缓冲(kbps)" variant="outlined" /></v-col>
               <v-col cols="12" md="2"><v-text-field v-model="videoGOP" label="GOP" variant="outlined" /></v-col>
@@ -168,7 +180,9 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useQueueStore } from '@/stores/queue';
+import { api } from '@/types/api';
 import type { ConversionDomain, ConversionTaskDraft } from '@/types/models';
 
 const props = defineProps<{ domain: ConversionDomain }>();
@@ -187,6 +201,7 @@ const startTime = ref('');
 const duration = ref('');
 const selectedAudioTrackIndex = ref('');
 const customFFmpegArgs = ref('');
+const copyHint = ref('');
 
 const copyVideoStream = ref(false);
 const videoEncoder = ref<'auto' | 'h264' | 'h265' | 'av1'>('auto');
@@ -239,15 +254,90 @@ const summaryText = computed(() => {
     `输出=${outputMode.value === 'source' ? '源目录' : '指定目录'}`,
     `覆盖=${overwrite.value ? '是' : '否'}`
   ];
-  if (props.domain === 'video') {
-    rows.push(copyVideoStream.value ? '视频流=copy' : `编码=${videoEncoder.value}`);
-  }
+  if (props.domain === 'video') rows.push(copyVideoStream.value ? '视频流=copy' : `编码=${videoEncoder.value}`);
   rows.push(copyAudioStream.value ? '音频流=copy' : `音频编码=${audioCodec.value}`);
   return rows.join(' | ');
 });
 
 const removeInput = (file: string): void => {
   inputText.value = selectedInputs.value.filter((f) => f !== file).join('\n');
+};
+
+const clearInputs = (): void => {
+  inputText.value = '';
+};
+
+const selectInputFiles = async (): Promise<void> => {
+  const files = await api.pickInputFiles();
+  if (!files.length) return;
+  const merged = new Set([...selectedInputs.value, ...files]);
+  inputText.value = Array.from(merged).join('\n');
+};
+
+const selectOutputDirectory = async (): Promise<void> => {
+  const dir = await api.pickOutputDirectory();
+  if (dir) outputDir.value = dir;
+};
+
+const openPreviewEditor = async (): Promise<void> => {
+  if (!selectedInputs.value.length) return;
+  const file = encodeURIComponent(selectedInputs.value[0]);
+  const label = `preview-editor-${props.domain}`;
+  const win = await WebviewWindow.getByLabel(label);
+  if (win) {
+    await win.setFocus();
+    return;
+  }
+  new WebviewWindow(label, {
+    url: `/#/preview?file=${file}`,
+    title: '预览编辑',
+    width: 1240,
+    height: 860,
+    resizable: true
+  });
+};
+
+const saveTemplate = (): void => {
+  const key = `aff-template-${props.domain}`;
+  localStorage.setItem(key, JSON.stringify(snapshotState()));
+  queue.pushLog('参数模板已保存');
+};
+
+const loadTemplate = (): void => {
+  const key = `aff-template-${props.domain}`;
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    queue.pushLog('未找到参数模板');
+    return;
+  }
+  try {
+    applySnapshot(JSON.parse(raw) as Record<string, unknown>);
+    queue.pushLog('参数模板已加载');
+  } catch {
+    queue.pushLog('参数模板格式错误');
+  }
+};
+
+const applyPreviewEdits = (): void => {
+  if (!selectedInputs.value.length) return;
+  const key = `aff-preview-${selectedInputs.value[0]}`;
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    queue.pushLog('未找到预览编辑参数');
+    return;
+  }
+  try {
+    const data = JSON.parse(raw) as Record<string, string>;
+    if (data.startTime) startTime.value = data.startTime;
+    if (data.duration) duration.value = data.duration;
+    if (data.videoCropWidth) videoCropWidth.value = data.videoCropWidth;
+    if (data.videoCropHeight) videoCropHeight.value = data.videoCropHeight;
+    if (data.videoCropX) videoCropX.value = data.videoCropX;
+    if (data.videoCropY) videoCropY.value = data.videoCropY;
+    queue.pushLog('已应用预览参数到当前转换设置');
+  } catch {
+    queue.pushLog('预览参数读取失败');
+  }
 };
 
 const baseName = (path: string): string => {
@@ -263,13 +353,7 @@ const parentDir = (path: string): string => {
 const codecArg = (): string[] => {
   if (audioCodec.value === 'auto') return [];
   const map: Record<string, string> = {
-    aac: 'aac',
-    mp3: 'libmp3lame',
-    opus: 'libopus',
-    vorbis: 'libvorbis',
-    flac: 'flac',
-    alac: 'alac',
-    pcm_s16le: 'pcm_s16le'
+    aac: 'aac', mp3: 'libmp3lame', opus: 'libopus', vorbis: 'libvorbis', flac: 'flac', alac: 'alac', pcm_s16le: 'pcm_s16le'
   };
   return ['-c:a', map[audioCodec.value] ?? audioCodec.value];
 };
@@ -280,7 +364,32 @@ const videoEncoderArg = (): string[] => {
   return codec ? ['-c:v', codec] : [];
 };
 
+const enforceCopyCompatibility = (): void => {
+  copyHint.value = '';
+  const visualEditsEnabled = !!(
+    videoFrameRate.value.trim() ||
+    enableDeinterlace.value ||
+    videoScalePreset.value !== 'source' ||
+    videoRotate.value !== 'none' ||
+    videoFlipHorizontal.value ||
+    videoFlipVertical.value ||
+    (videoCropWidth.value.trim() && videoCropHeight.value.trim())
+  );
+  if (copyVideoStream.value && visualEditsEnabled) {
+    copyVideoStream.value = false;
+    copyHint.value = '已启用视频可视/滤镜参数，自动关闭视频 Copy。';
+  }
+  const audioEditsEnabled = !!(audioVolumeDB.value.trim() || enableLoudnorm.value);
+  if (copyAudioStream.value && audioEditsEnabled) {
+    copyAudioStream.value = false;
+    copyHint.value = copyHint.value
+      ? `${copyHint.value} 已启用音频滤镜参数，自动关闭音频 Copy。`
+      : '已启用音频滤镜参数，自动关闭音频 Copy。';
+  }
+};
+
 const buildArgs = (): string[] => {
+  enforceCopyCompatibility();
   const args: string[] = [];
   const vf: string[] = [];
   const af: string[] = [];
@@ -330,9 +439,7 @@ const buildArgs = (): string[] => {
       if (audioChannels.value.trim()) args.push('-ac', audioChannels.value.trim());
       if (audioVBRQuality.value.trim()) args.push('-q:a', audioVBRQuality.value.trim());
       if (audioVolumeDB.value.trim()) af.push(`volume=${audioVolumeDB.value.trim()}dB`);
-      if (enableLoudnorm.value) {
-        af.push(`loudnorm=I=${loudnormIntegratedTarget.value.trim() || '-16'}:LRA=${loudnormLraTarget.value.trim() || '11'}:TP=${loudnormTruePeakTarget.value.trim() || '-1.5'}`);
-      }
+      if (enableLoudnorm.value) af.push(`loudnorm=I=${loudnormIntegratedTarget.value.trim() || '-16'}:LRA=${loudnormLraTarget.value.trim() || '11'}:TP=${loudnormTruePeakTarget.value.trim() || '-1.5'}`);
     }
   }
 
@@ -364,6 +471,97 @@ const applyPreset = (): void => {
     videoPreset.value = 'faster';
     audioBitrateKbps.value = '128';
   }
+};
+
+const snapshotState = (): Record<string, unknown> => ({
+  outputMode: outputMode.value,
+  outputDir: outputDir.value,
+  format: format.value,
+  overwrite: overwrite.value,
+  keepMetadata: keepMetadata.value,
+  preset: preset.value,
+  threadCount: threadCount.value,
+  startTime: startTime.value,
+  duration: duration.value,
+  selectedAudioTrackIndex: selectedAudioTrackIndex.value,
+  customFFmpegArgs: customFFmpegArgs.value,
+  copyVideoStream: copyVideoStream.value,
+  videoEncoder: videoEncoder.value,
+  videoPreset: videoPreset.value,
+  videoScalePreset: videoScalePreset.value,
+  videoRateControl: videoRateControl.value,
+  videoCRF: videoCRF.value,
+  videoBitrateKbps: videoBitrateKbps.value,
+  videoFrameRate: videoFrameRate.value,
+  videoMaxBitrateKbps: videoMaxBitrateKbps.value,
+  videoBufferSizeKbps: videoBufferSizeKbps.value,
+  videoGOP: videoGOP.value,
+  videoPixelFormat: videoPixelFormat.value,
+  enableDeinterlace: enableDeinterlace.value,
+  videoRotate: videoRotate.value,
+  videoFlipHorizontal: videoFlipHorizontal.value,
+  videoFlipVertical: videoFlipVertical.value,
+  videoCropWidth: videoCropWidth.value,
+  videoCropHeight: videoCropHeight.value,
+  videoCropX: videoCropX.value,
+  videoCropY: videoCropY.value,
+  copyAudioStream: copyAudioStream.value,
+  audioCodec: audioCodec.value,
+  audioBitrateKbps: audioBitrateKbps.value,
+  audioSampleRate: audioSampleRate.value,
+  audioChannels: audioChannels.value,
+  audioVBRQuality: audioVBRQuality.value,
+  audioVolumeDB: audioVolumeDB.value,
+  enableLoudnorm: enableLoudnorm.value,
+  loudnormIntegratedTarget: loudnormIntegratedTarget.value,
+  loudnormLraTarget: loudnormLraTarget.value,
+  loudnormTruePeakTarget: loudnormTruePeakTarget.value
+});
+
+const applySnapshot = (raw: Record<string, unknown>): void => {
+  const get = <T>(k: string, fallback: T): T => (k in raw ? (raw[k] as T) : fallback);
+  outputMode.value = get('outputMode', outputMode.value);
+  outputDir.value = get('outputDir', outputDir.value);
+  format.value = get('format', format.value);
+  overwrite.value = get('overwrite', overwrite.value);
+  keepMetadata.value = get('keepMetadata', keepMetadata.value);
+  preset.value = get('preset', preset.value);
+  threadCount.value = get('threadCount', threadCount.value);
+  startTime.value = get('startTime', startTime.value);
+  duration.value = get('duration', duration.value);
+  selectedAudioTrackIndex.value = get('selectedAudioTrackIndex', selectedAudioTrackIndex.value);
+  customFFmpegArgs.value = get('customFFmpegArgs', customFFmpegArgs.value);
+  copyVideoStream.value = get('copyVideoStream', copyVideoStream.value);
+  videoEncoder.value = get('videoEncoder', videoEncoder.value);
+  videoPreset.value = get('videoPreset', videoPreset.value);
+  videoScalePreset.value = get('videoScalePreset', videoScalePreset.value);
+  videoRateControl.value = get('videoRateControl', videoRateControl.value);
+  videoCRF.value = get('videoCRF', videoCRF.value);
+  videoBitrateKbps.value = get('videoBitrateKbps', videoBitrateKbps.value);
+  videoFrameRate.value = get('videoFrameRate', videoFrameRate.value);
+  videoMaxBitrateKbps.value = get('videoMaxBitrateKbps', videoMaxBitrateKbps.value);
+  videoBufferSizeKbps.value = get('videoBufferSizeKbps', videoBufferSizeKbps.value);
+  videoGOP.value = get('videoGOP', videoGOP.value);
+  videoPixelFormat.value = get('videoPixelFormat', videoPixelFormat.value);
+  enableDeinterlace.value = get('enableDeinterlace', enableDeinterlace.value);
+  videoRotate.value = get('videoRotate', videoRotate.value);
+  videoFlipHorizontal.value = get('videoFlipHorizontal', videoFlipHorizontal.value);
+  videoFlipVertical.value = get('videoFlipVertical', videoFlipVertical.value);
+  videoCropWidth.value = get('videoCropWidth', videoCropWidth.value);
+  videoCropHeight.value = get('videoCropHeight', videoCropHeight.value);
+  videoCropX.value = get('videoCropX', videoCropX.value);
+  videoCropY.value = get('videoCropY', videoCropY.value);
+  copyAudioStream.value = get('copyAudioStream', copyAudioStream.value);
+  audioCodec.value = get('audioCodec', audioCodec.value);
+  audioBitrateKbps.value = get('audioBitrateKbps', audioBitrateKbps.value);
+  audioSampleRate.value = get('audioSampleRate', audioSampleRate.value);
+  audioChannels.value = get('audioChannels', audioChannels.value);
+  audioVBRQuality.value = get('audioVBRQuality', audioVBRQuality.value);
+  audioVolumeDB.value = get('audioVolumeDB', audioVolumeDB.value);
+  enableLoudnorm.value = get('enableLoudnorm', enableLoudnorm.value);
+  loudnormIntegratedTarget.value = get('loudnormIntegratedTarget', loudnormIntegratedTarget.value);
+  loudnormLraTarget.value = get('loudnormLraTarget', loudnormLraTarget.value);
+  loudnormTruePeakTarget.value = get('loudnormTruePeakTarget', loudnormTruePeakTarget.value);
 };
 
 const submit = async (): Promise<void> => {

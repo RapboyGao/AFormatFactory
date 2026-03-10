@@ -1,7 +1,7 @@
 <template>
   <v-app>
     <v-layout class="fill-height">
-      <v-navigation-drawer width="260" permanent>
+      <v-navigation-drawer v-if="!isPreviewRoute" width="260" permanent>
         <v-sheet class="pa-4">
           <div class="text-h6">AFormatFactory</div>
           <div class="text-caption text-medium-emphasis">Tauri + Vue + FFmpeg C API</div>
@@ -31,7 +31,7 @@
       </v-navigation-drawer>
 
       <v-main>
-        <v-app-bar flat border>
+        <v-app-bar v-if="!isPreviewRoute" flat border>
           <v-app-bar-title>{{ currentTitle }}</v-app-bar-title>
         </v-app-bar>
         <router-view />
@@ -57,6 +57,7 @@ const navItems = [
 ];
 
 const currentTitle = computed(() => navItems.find((x) => x.to === route.path)?.title ?? 'AFormatFactory');
+const isPreviewRoute = computed(() => route.path === '/preview');
 
 onMounted(() => void queue.bootstrap());
 </script>

@@ -466,6 +466,49 @@ fn get_concurrency(state: tauri::State<'_, SharedState>) -> usize {
 }
 
 #[tauri::command]
+fn pick_input_files() -> Vec<String> {
+    rfd::FileDialog::new()
+        .pick_files()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect()
+}
+
+#[tauri::command]
+fn pick_output_directory() -> Option<String> {
+    rfd::FileDialog::new()
+        .pick_folder()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn reorder_tasks(state: tauri::State<'_, SharedState>, ordered_ids: Vec<String>) -> Result<(), String> {
+    let mut queue = state.queue.lock().expect("queue poisoned");
+    if queue.running_workers > 0 {
+        return Err("queue is running; cannot reorder".to_string());
+    }
+
+    if ordered_ids.len() != queue.tasks.len() {
+        return Err("ordered_ids length mismatch".to_string());
+    }
+
+    let mut remaining = std::mem::take(&mut queue.tasks);
+    let mut reordered = Vec::with_capacity(remaining.len());
+    for id in ordered_ids {
+        let Some(idx) = remaining.iter().position(|t| t.ui.id == id) else {
+            return Err("ordered_ids contains unknown task id".to_string());
+        };
+        reordered.push(remaining.remove(idx));
+    }
+    if !remaining.is_empty() {
+        return Err("ordered_ids did not consume all tasks".to_string());
+    }
+    queue.tasks = reordered;
+    Ok(())
+}
+
+#[tauri::command]
 fn detect_capabilities() -> Result<Capabilities, String> {
     let mut muxers_ptr: *mut c_char = std::ptr::null_mut();
     let mut encoders_ptr: *mut c_char = std::ptr::null_mut();
@@ -582,6 +625,9 @@ pub fn run() {
             clear_completed,
             set_concurrency,
             get_concurrency,
+            pick_input_files,
+            pick_output_directory,
+            reorder_tasks,
             detect_capabilities,
             run_media_edit
         ])
