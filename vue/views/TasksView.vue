@@ -12,9 +12,18 @@
 
           <v-data-table :headers="headers" :items="queue.tasks" item-value="id" density="comfortable">
             <template #item.progress="{ item }">
-              <div class="d-flex align-center ga-2" style="min-width: 220px">
-                <v-progress-linear :model-value="Math.round((item.progress.estimated_ratio || 0) * 100)" height="8" rounded color="primary" />
-                <span>{{ Math.round((item.progress.estimated_ratio || 0) * 100) }}%</span>
+              <div class="d-flex flex-column ga-1" style="min-width: 260px">
+                <div class="d-flex align-center ga-2">
+                  <v-progress-linear :model-value="Math.round((item.progress.estimated_ratio || 0) * 100)" height="8" rounded color="primary" />
+                  <span>{{ Math.round((item.progress.estimated_ratio || 0) * 100) }}%</span>
+                </div>
+                <div class="text-caption text-medium-emphasis">
+                  帧: {{ item.progress.processed_frames || 0 }} |
+                  时长: {{ formatTime(item.progress.processed_time_seconds || 0) }} |
+                  速度: {{ formatSpeed(item.progress.speed || 0) }} |
+                  码率: {{ formatBitrate(item.progress.bitrate_kbps || 0) }} |
+                  FPS: {{ formatFps(item.progress.processed_frames || 0, item.progress.processed_time_seconds || 0) }}
+                </div>
               </div>
             </template>
             <template #item.status="{ item }">
@@ -62,7 +71,7 @@ const headers = [
   { title: '状态', key: 'status' },
   { title: '输入', key: 'input' },
   { title: '输出', key: 'output' },
-  { title: '进度', key: 'progress', sortable: false },
+  { title: '处理状态', key: 'progress', sortable: false },
   { title: '操作', key: 'actions', sortable: false }
 ];
 
@@ -78,5 +87,28 @@ const statusColor = (status: string): string => {
 
 const onConcurrency = async (value: number): Promise<void> => {
   await queue.applyConcurrency(value);
+};
+
+const formatTime = (sec: number): string => {
+  if (!Number.isFinite(sec) || sec <= 0) return '0.0s';
+  if (sec < 60) return `${sec.toFixed(1)}s`;
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return `${m}m${s.toFixed(1)}s`;
+};
+
+const formatSpeed = (speed: number): string => {
+  if (!Number.isFinite(speed) || speed <= 0) return 'N/A';
+  return `${speed.toFixed(2)}x`;
+};
+
+const formatBitrate = (kbps: number): string => {
+  if (!Number.isFinite(kbps) || kbps <= 0) return 'N/A';
+  return `${kbps.toFixed(1)}kbps`;
+};
+
+const formatFps = (frames: number, sec: number): string => {
+  if (!Number.isFinite(frames) || !Number.isFinite(sec) || frames <= 0 || sec <= 0) return 'N/A';
+  return (frames / sec).toFixed(1);
 };
 </script>

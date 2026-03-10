@@ -37,16 +37,31 @@ fn main() {
     println!("cargo:rustc-link-lib=static=avutil");
     println!("cargo:rustc-link-lib=z");
     println!("cargo:rustc-link-lib=bz2");
-    println!("cargo:rustc-link-lib=iconv");
-    println!("cargo:rustc-link-lib=m");
 
-    println!("cargo:rustc-link-lib=framework=VideoToolbox");
-    println!("cargo:rustc-link-lib=framework=CoreMedia");
-    println!("cargo:rustc-link-lib=framework=CoreVideo");
-    println!("cargo:rustc-link-lib=framework=AudioToolbox");
-    println!("cargo:rustc-link-lib=framework=AVFoundation");
-    println!("cargo:rustc-link-lib=framework=CoreImage");
-    println!("cargo:rustc-link-lib=framework=OpenGL");
-    println!("cargo:rustc-link-lib=framework=AppKit");
-    println!("cargo:rustc-link-lib=framework=Security");
+    let target = env::var("TARGET").unwrap_or_default();
+    if target.contains("apple-darwin") {
+        println!("cargo:rustc-link-lib=iconv");
+        println!("cargo:rustc-link-lib=m");
+        println!("cargo:rustc-link-lib=framework=VideoToolbox");
+        println!("cargo:rustc-link-lib=framework=CoreMedia");
+        println!("cargo:rustc-link-lib=framework=CoreVideo");
+        println!("cargo:rustc-link-lib=framework=AudioToolbox");
+        println!("cargo:rustc-link-lib=framework=AVFoundation");
+        println!("cargo:rustc-link-lib=framework=CoreImage");
+        println!("cargo:rustc-link-lib=framework=OpenGL");
+        println!("cargo:rustc-link-lib=framework=AppKit");
+        println!("cargo:rustc-link-lib=framework=Security");
+    } else if target.contains("linux") {
+        println!("cargo:rustc-link-lib=m");
+        println!("cargo:rustc-link-lib=pthread");
+        println!("cargo:rustc-link-lib=dl");
+    } else if target.contains("windows") {
+        println!("cargo:rustc-link-lib=ws2_32");
+        println!("cargo:rustc-link-lib=secur32");
+        println!("cargo:rustc-link-lib=bcrypt");
+        println!("cargo:rustc-link-lib=user32");
+        println!("cargo:rustc-link-lib=gdi32");
+        println!("cargo:rustc-link-lib=advapi32");
+        println!("cargo:rustc-link-lib=ole32");
+    }
 }
