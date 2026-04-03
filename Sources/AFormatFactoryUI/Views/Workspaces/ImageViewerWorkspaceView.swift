@@ -33,11 +33,11 @@ struct ImageViewerWorkspaceView: View {
                 }
                 .buttonStyle(MaterialActionButtonStyle())
 
-                Button("导出 JPEG") {
-                    viewModel.exportCurrentImageAsJPEG()
+                Button("批量导出 JPEG") {
+                    viewModel.exportSelectedImagesAsJPEG()
                 }
                 .buttonStyle(MaterialActionButtonStyle())
-                .disabled(viewModel.currentImageURL == nil)
+                .disabled(viewModel.selectedImageFiles.isEmpty)
 
                 Button("全屏预览") {
                     isFullscreenPresented = true

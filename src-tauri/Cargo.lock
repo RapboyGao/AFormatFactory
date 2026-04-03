@@ -13,6 +13,7 @@ name = "aformatfactory-tauri"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "cc",
  "num_cpus",
  "rfd",

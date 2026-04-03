@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
@@ -7,6 +8,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use tauri::Emitter;
+use tauri::Manager;
 use uuid::Uuid;
 
 #[repr(C)]
@@ -111,7 +113,7 @@ struct Capabilities {
 
 #[derive(Debug, Serialize)]
 struct ImagePreviewResult {
-    preview_path: String,
+    preview_data_url: String,
     file_size_bytes: u64,
 }
 
@@ -201,7 +203,7 @@ fn sanitized_file_stem(path: &Path) -> String {
         .collect()
 }
 
-fn preview_output_path(input: &Path) -> Result<PathBuf, String> {
+fn preview_output_path(app: &tauri::AppHandle, input: &Path) -> Result<PathBuf, String> {
     let metadata = std::fs::metadata(input).map_err(|err| err.to_string())?;
     let modified = metadata
         .modified()
@@ -210,10 +212,14 @@ fn preview_output_path(input: &Path) -> Result<PathBuf, String> {
         .map(|value| value.as_secs())
         .unwrap_or(0);
 
-    let preview_dir = std::env::temp_dir().join("aformatfactory-image-preview");
+    let preview_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join("image-preview");
     std::fs::create_dir_all(&preview_dir).map_err(|err| err.to_string())?;
     Ok(preview_dir.join(format!(
-        "{}-{}-{}.png",
+        "{}-{}-{}.jpg",
         sanitized_file_stem(input),
         metadata.len(),
         modified
@@ -530,17 +536,17 @@ fn pick_output_directory() -> Option<String> {
 }
 
 #[tauri::command]
-fn render_image_preview(input_path: String) -> Result<ImagePreviewResult, String> {
+fn render_image_preview(app: tauri::AppHandle, input_path: String) -> Result<ImagePreviewResult, String> {
     let input = PathBuf::from(&input_path);
     if !input.exists() {
         return Err("input image not found".to_string());
     }
 
-    let output = preview_output_path(&input)?;
+    let output = preview_output_path(&app, &input)?;
     let status = Command::new("sips")
         .arg("-s")
         .arg("format")
-        .arg("png")
+        .arg("jpeg")
         .arg(&input)
         .arg("--out")
         .arg(&output)
@@ -551,55 +557,69 @@ fn render_image_preview(input_path: String) -> Result<ImagePreviewResult, String
         return Err("failed to render image preview".to_string());
     }
 
+    let bytes = std::fs::read(&output).map_err(|err| err.to_string())?;
+    let preview_data_url = format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    );
     let file_size_bytes = std::fs::metadata(&input).map_err(|err| err.to_string())?.len();
     Ok(ImagePreviewResult {
-        preview_path: output.to_string_lossy().to_string(),
+        preview_data_url,
         file_size_bytes,
     })
 }
 
 #[tauri::command]
-fn export_image_as_jpeg(input_path: String) -> Result<String, String> {
-    let input = std::path::PathBuf::from(&input_path);
-    if !input.exists() {
-        return Err("input image not found".to_string());
+fn export_images_as_jpeg(input_paths: Vec<String>) -> Result<Vec<String>, String> {
+    if input_paths.is_empty() {
+        return Err("no input images selected".to_string());
     }
 
-    let suggested = input
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .map(|value| format!("{value}.jpg"))
-        .unwrap_or_else(|| "export.jpg".to_string());
-
-    let output = rfd::FileDialog::new()
-        .set_directory(input.parent().unwrap_or_else(|| std::path::Path::new("/")))
-        .set_file_name(&suggested)
-        .save_file()
+    let first_input = PathBuf::from(&input_paths[0]);
+    let output_dir = rfd::FileDialog::new()
+        .set_directory(first_input.parent().unwrap_or_else(|| Path::new("/")))
+        .pick_folder()
         .ok_or_else(|| "export cancelled".to_string())?;
 
-    #[cfg(target_os = "macos")]
-    {
-        let status = Command::new("sips")
-            .arg("-s")
-            .arg("format")
-            .arg("jpeg")
-            .arg(&input)
-            .arg("--out")
-            .arg(&output)
-            .status()
-            .map_err(|err| err.to_string())?;
-
-        if !status.success() {
-            return Err("failed to export JPEG with sips".to_string());
+    let mut outputs = Vec::new();
+    for input_path in input_paths {
+        let input = PathBuf::from(&input_path);
+        if !input.exists() {
+            continue;
         }
+
+        let file_stem = input
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("image");
+        let output = output_dir.join(format!("{file_stem}.jpg"));
+
+        #[cfg(target_os = "macos")]
+        {
+            let status = Command::new("sips")
+                .arg("-s")
+                .arg("format")
+                .arg("jpeg")
+                .arg(&input)
+                .arg("--out")
+                .arg(&output)
+                .status()
+                .map_err(|err| err.to_string())?;
+
+            if !status.success() {
+                return Err(format!("failed to export JPEG: {}", input.display()));
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            return Err("HEIF JPEG export is currently only implemented on macOS".to_string());
+        }
+
+        outputs.push(output.to_string_lossy().to_string());
     }
 
-    #[cfg(not(target_os = "macos"))]
-    {
-        return Err("HEIF JPEG export is currently only implemented on macOS".to_string());
-    }
-
-    Ok(output.to_string_lossy().to_string())
+    Ok(outputs)
 }
 
 #[tauri::command]
@@ -749,7 +769,7 @@ pub fn run() {
             pick_image_files,
             pick_output_directory,
             render_image_preview,
-            export_image_as_jpeg,
+            export_images_as_jpeg,
             reorder_tasks,
             detect_capabilities,
             run_media_edit

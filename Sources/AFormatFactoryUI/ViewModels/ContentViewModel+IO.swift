@@ -139,26 +139,34 @@ extension ContentViewModel {
         }
     }
 
-    func exportCurrentImageAsJPEG() {
-        guard let url = currentImageURL else {
-            appendAppLog("图片查看器：请先选择图片。")
+    func exportSelectedImagesAsJPEG() {
+        guard !selectedImageFiles.isEmpty else {
+            appendAppLog("图片查看器：请先选择至少一张图片。")
             return
         }
 
-        let savePanel = NSSavePanel()
-        savePanel.canCreateDirectories = true
-        savePanel.allowedContentTypes = [.jpeg]
-        savePanel.nameFieldStringValue = url.deletingPathExtension().lastPathComponent + ".jpg"
-        savePanel.directoryURL = url.deletingLastPathComponent()
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = currentImageURL?.deletingLastPathComponent()
 
-        guard savePanel.runModal() == .OK, let outputURL = savePanel.url else { return }
+        guard panel.runModal() == .OK, let outputDirectory = panel.url else { return }
 
-        do {
-            try exportImageAsJPEG(inputURL: url, outputURL: outputURL)
-            appendAppLog("图片查看器：已导出 JPEG -> \(outputURL.path)")
-        } catch {
-            appendAppLog("图片查看器：导出 JPEG 失败，\(error.localizedDescription)")
+        var successCount = 0
+        for inputURL in selectedImageFiles {
+            let outputURL = outputDirectory
+                .appendingPathComponent(inputURL.deletingPathExtension().lastPathComponent)
+                .appendingPathExtension("jpg")
+
+            do {
+                try exportImageAsJPEG(inputURL: inputURL, outputURL: outputURL)
+                successCount += 1
+            } catch {
+                appendAppLog("图片查看器：导出失败 \(inputURL.lastPathComponent)，\(error.localizedDescription)")
+            }
         }
+        appendAppLog("图片查看器：已批量导出 \(successCount)/\(selectedImageFiles.count) 张 JPEG 到 \(outputDirectory.path)")
     }
 
     private func exportImageAsJPEG(inputURL: URL, outputURL: URL) throws {

@@ -18,10 +18,10 @@
           variant="tonal"
           prepend-icon="mdi-file-jpg-box"
           class="ml-2"
-          :disabled="!activeImage"
+          :disabled="!images.length"
           @click="exportJpeg"
         >
-          导出 JPEG
+          批量导出 JPEG
         </v-btn>
       </div>
 
@@ -104,7 +104,6 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { convertFileSrc } from '@tauri-apps/api/core';
 import { api } from '@/types/api';
 import { useQueueStore } from '@/stores/queue';
 
@@ -143,7 +142,7 @@ const setActiveImage = async (path: string): Promise<void> => {
 
   try {
     const result = await api.renderImagePreview(path);
-    previewSrc.value = convertFileSrc(result.preview_path);
+    previewSrc.value = result.preview_data_url;
     fileSizeBytes.value = result.file_size_bytes;
   } catch (error) {
     queue.pushLog(`图片预览失败: ${String(error)}`);
@@ -181,10 +180,10 @@ const onImageLoad = (event: Event): void => {
 };
 
 const exportJpeg = async (): Promise<void> => {
-  if (!activeImage.value) return;
+  if (!images.value.length) return;
   try {
-    const output = await api.exportImageAsJpeg(activeImage.value);
-    queue.pushLog(`图片导出完成: ${output}`);
+    const outputs = await api.exportImagesAsJpeg(images.value);
+    queue.pushLog(`图片批量导出完成: ${outputs.length} 张`);
   } catch (error) {
     queue.pushLog(`图片导出失败: ${String(error)}`);
   }
