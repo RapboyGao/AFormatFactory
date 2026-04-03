@@ -16,6 +16,8 @@ struct WorkspaceSidebarView: View {
             Section("媒体工具") {
                 Label(WorkspaceSection.mediaEdit.title, systemImage: WorkspaceSection.mediaEdit.symbol)
                     .tag(WorkspaceSection.mediaEdit)
+                Label(WorkspaceSection.imageViewer.title, systemImage: WorkspaceSection.imageViewer.symbol)
+                    .tag(WorkspaceSection.imageViewer)
             }
 
             Section("工作区") {

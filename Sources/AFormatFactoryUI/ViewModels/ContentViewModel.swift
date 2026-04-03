@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import AppKit
 import AFormatFactoryFFmpegKit
 
 enum VideoRateControl: String, CaseIterable, Identifiable, Codable {
@@ -411,6 +412,14 @@ public final class ContentViewModel: ObservableObject {
     @Published var mediaEditIsProcessing = false
     @Published var mediaEditLogs: String = ""
     var mediaEditActiveJobID: UUID?
+
+    // Image viewer
+    @Published var selectedImageFiles: [URL] = []
+    @Published var currentImageURL: URL?
+    @Published var currentImage: NSImage?
+    @Published var currentImagePixelSize: CGSize = .zero
+    @Published var currentImageFileSizeBytes: Int64 = 0
+    @Published var imageViewerZoom: Double = 1
 
     // Preview/editor state
     @Published var previewTargetFile: URL?

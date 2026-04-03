@@ -5,6 +5,7 @@ import MediaEditView from '@/views/MediaEditView.vue';
 import TasksView from '@/views/TasksView.vue';
 import LogsView from '@/views/LogsView.vue';
 import PreviewEditorView from '@/views/PreviewEditorView.vue';
+import ImageViewerView from '@/views/ImageViewerView.vue';
 
 export const router = createRouter({
   history: createWebHashHistory(),
@@ -13,6 +14,7 @@ export const router = createRouter({
     { path: '/video', component: VideoConvertView },
     { path: '/audio', component: AudioConvertView },
     { path: '/media-edit', component: MediaEditView },
+    { path: '/images', component: ImageViewerView },
     { path: '/tasks', component: TasksView },
     { path: '/logs', component: LogsView },
     { path: '/preview', component: PreviewEditorView }

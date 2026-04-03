@@ -52,6 +52,7 @@ const navItems = [
   { to: '/video', icon: 'mdi-filmstrip', title: '视频转换' },
   { to: '/audio', icon: 'mdi-music-note', title: '音频转换' },
   { to: '/media-edit', icon: 'mdi-movie-edit', title: '媒体编辑' },
+  { to: '/images', icon: 'mdi-image-multiple-outline', title: '图片查看器' },
   { to: '/tasks', icon: 'mdi-format-list-bulleted-square', title: '任务队列' },
   { to: '/logs', icon: 'mdi-text-box-search-outline', title: '应用日志' }
 ];

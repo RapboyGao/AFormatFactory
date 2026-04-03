@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 import UniformTypeIdentifiers
 
 extension ContentViewModel {
@@ -93,5 +94,112 @@ extension ContentViewModel {
         case .specifiedDirectory:
             return outputDirectory ?? file.deletingLastPathComponent()
         }
+    }
+
+    func pickImageFiles() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "heic"),
+            UTType(filenameExtension: "heif"),
+            UTType(filenameExtension: "hif")
+        ].compactMap { $0 }
+
+        if panel.runModal() == .OK {
+            selectedImageFiles = panel.urls
+            if let first = selectedImageFiles.first {
+                setCurrentImage(first)
+            }
+            appendAppLog("图片查看器：已选择 \(selectedImageFiles.count) 个文件。")
+        }
+    }
+
+    func setCurrentImage(_ url: URL) {
+        currentImageURL = url
+        imageViewerZoom = 1
+
+        currentImage = NSImage(contentsOf: url)
+        currentImagePixelSize = imagePixelSize(for: url) ?? .zero
+        currentImageFileSizeBytes = fileSize(for: url)
+        appendAppLog("图片查看器：已加载 \(url.lastPathComponent)")
+    }
+
+    func removeSelectedImageFile(_ url: URL) {
+        selectedImageFiles.removeAll { $0 == url }
+        if currentImageURL == url {
+            currentImageURL = nil
+            currentImage = nil
+            currentImagePixelSize = .zero
+            currentImageFileSizeBytes = 0
+            if let next = selectedImageFiles.first {
+                setCurrentImage(next)
+            }
+        }
+    }
+
+    func exportCurrentImageAsJPEG() {
+        guard let url = currentImageURL else {
+            appendAppLog("图片查看器：请先选择图片。")
+            return
+        }
+
+        let savePanel = NSSavePanel()
+        savePanel.canCreateDirectories = true
+        savePanel.allowedContentTypes = [.jpeg]
+        savePanel.nameFieldStringValue = url.deletingPathExtension().lastPathComponent + ".jpg"
+        savePanel.directoryURL = url.deletingLastPathComponent()
+
+        guard savePanel.runModal() == .OK, let outputURL = savePanel.url else { return }
+
+        do {
+            try exportImageAsJPEG(inputURL: url, outputURL: outputURL)
+            appendAppLog("图片查看器：已导出 JPEG -> \(outputURL.path)")
+        } catch {
+            appendAppLog("图片查看器：导出 JPEG 失败，\(error.localizedDescription)")
+        }
+    }
+
+    private func exportImageAsJPEG(inputURL: URL, outputURL: URL) throws {
+        guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+            throw NSError(domain: "AFormatFactory.ImageViewer", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "无法读取 HEIC/HIF/HEIF 图像。"
+            ])
+        }
+
+        try ensureDirectoryExists(at: outputURL.deletingLastPathComponent())
+        guard let destination = CGImageDestinationCreateWithURL(outputURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw NSError(domain: "AFormatFactory.ImageViewer", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "无法创建 JPEG 输出。"
+            ])
+        }
+
+        let properties = [
+            kCGImageDestinationLossyCompressionQuality: 1.0
+        ] as CFDictionary
+        CGImageDestinationAddImage(destination, image, properties)
+
+        guard CGImageDestinationFinalize(destination) else {
+            throw NSError(domain: "AFormatFactory.ImageViewer", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "JPEG 写入失败。"
+            ])
+        }
+    }
+
+    private func imagePixelSize(for url: URL) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? CGFloat,
+              let height = properties[kCGImagePropertyPixelHeight] as? CGFloat else {
+            return nil
+        }
+        return CGSize(width: width, height: height)
+    }
+
+    private func fileSize(for url: URL) -> Int64 {
+        let values = try? url.resourceValues(forKeys: [.fileSizeKey])
+        return Int64(values?.fileSize ?? 0)
     }
 }

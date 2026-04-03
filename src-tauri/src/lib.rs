@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 use tauri::Emitter;
@@ -476,10 +477,65 @@ fn pick_input_files() -> Vec<String> {
 }
 
 #[tauri::command]
+fn pick_image_files() -> Vec<String> {
+    rfd::FileDialog::new()
+        .add_filter("HEIF Images", &["heic", "heif", "hif"])
+        .pick_files()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect()
+}
+
+#[tauri::command]
 fn pick_output_directory() -> Option<String> {
     rfd::FileDialog::new()
         .pick_folder()
         .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn export_image_as_jpeg(input_path: String) -> Result<String, String> {
+    let input = std::path::PathBuf::from(&input_path);
+    if !input.exists() {
+        return Err("input image not found".to_string());
+    }
+
+    let suggested = input
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .map(|value| format!("{value}.jpg"))
+        .unwrap_or_else(|| "export.jpg".to_string());
+
+    let output = rfd::FileDialog::new()
+        .set_directory(input.parent().unwrap_or_else(|| std::path::Path::new("/")))
+        .set_file_name(&suggested)
+        .save_file()
+        .ok_or_else(|| "export cancelled".to_string())?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = Command::new("sips")
+            .arg("-s")
+            .arg("format")
+            .arg("jpeg")
+            .arg(&input)
+            .arg("--out")
+            .arg(&output)
+            .status()
+            .map_err(|err| err.to_string())?;
+
+        if !status.success() {
+            return Err("failed to export JPEG with sips".to_string());
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Err("HEIF JPEG export is currently only implemented on macOS".to_string());
+    }
+
+    Ok(output.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -626,7 +682,9 @@ pub fn run() {
             set_concurrency,
             get_concurrency,
             pick_input_files,
+            pick_image_files,
             pick_output_directory,
+            export_image_as_jpeg,
             reorder_tasks,
             detect_capabilities,
             run_media_edit

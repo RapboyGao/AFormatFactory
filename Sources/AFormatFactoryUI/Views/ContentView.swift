@@ -9,6 +9,7 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
     case videoConvert
     case audioConvert
     case mediaEdit
+    case imageViewer
     case tasks
     case appLog
 
@@ -22,6 +23,8 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
             return "音频格式转换"
         case .mediaEdit:
             return "媒体编辑"
+        case .imageViewer:
+            return "图片查看器"
         case .tasks:
             return "任务队列"
         case .appLog:
@@ -37,6 +40,8 @@ enum WorkspaceSection: String, CaseIterable, Identifiable {
             return "waveform"
         case .mediaEdit:
             return "wand.and.stars"
+        case .imageViewer:
+            return "photo.stack"
         case .tasks:
             return "list.bullet.rectangle"
         case .appLog:
@@ -67,6 +72,8 @@ public struct ContentView: View {
                         ConversionWorkspaceView(viewModel: viewModel, selectedSection: $selectedSection, targetDomain: .audio)
                     case .mediaEdit:
                         MediaEditWorkspaceView(viewModel: viewModel)
+                    case .imageViewer:
+                        ImageViewerWorkspaceView(viewModel: viewModel)
                     case .tasks:
                         TaskWorkspaceView(viewModel: viewModel)
                     case .appLog:
