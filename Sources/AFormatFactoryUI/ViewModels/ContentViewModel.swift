@@ -415,6 +415,7 @@ public final class ContentViewModel: ObservableObject {
 
     // Image viewer
     @Published var selectedImageFiles: [URL] = []
+    @Published var selectedImageFileSet: Set<URL> = []
     @Published var currentImageURL: URL?
     @Published var currentImage: NSImage?
     @Published var currentImagePixelSize: CGSize = .zero
@@ -422,6 +423,9 @@ public final class ContentViewModel: ObservableObject {
     @Published var imageViewerZoom: Double = 1
     @Published var imageFullscreenPresented = false
     @Published var imageFullscreenZoom: Double = 1
+    @Published var imageFullscreenOffset: CGSize = .zero
+    @Published var imageSlideshowEnabled = false
+    @Published var imageSlideshowInterval: Double = 3
 
     // Preview/editor state
     @Published var previewTargetFile: URL?

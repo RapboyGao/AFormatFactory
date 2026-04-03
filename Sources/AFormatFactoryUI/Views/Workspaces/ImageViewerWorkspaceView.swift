@@ -62,14 +62,35 @@ struct ImageViewerWorkspaceView: View {
 
     private var fileList: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("已选图片（\(viewModel.selectedImageFiles.count)）")
-                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                .foregroundStyle(.white.opacity(0.84))
+            HStack {
+                Text("已选图片（\(viewModel.selectedImageFiles.count)）")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.84))
+                Spacer()
+                Button("全选") {
+                    viewModel.selectAllImageFiles()
+                }
+                .buttonStyle(MaterialActionButtonStyle())
+                .disabled(viewModel.selectedImageFiles.isEmpty)
+                Button("删除选中") {
+                    viewModel.removeSelectedImageFiles()
+                }
+                .buttonStyle(MaterialActionButtonStyle())
+                .disabled(viewModel.selectedImageFileSet.isEmpty)
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(viewModel.selectedImageFiles, id: \.self) { file in
                         HStack(spacing: 8) {
+                            Button {
+                                viewModel.toggleImageFileSelection(file)
+                            } label: {
+                                Image(systemName: viewModel.selectedImageFileSet.contains(file) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(viewModel.selectedImageFileSet.contains(file) ? .white : .white.opacity(0.55))
+                            }
+                            .buttonStyle(.plain)
+
                             Button(viewModel.currentImageURL == file ? "查看中" : "查看") {
                                 viewModel.setCurrentImage(file)
                             }

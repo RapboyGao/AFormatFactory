@@ -109,6 +109,7 @@ extension ContentViewModel {
 
         if panel.runModal() == .OK {
             selectedImageFiles = panel.urls
+            selectedImageFileSet = []
             if let first = selectedImageFiles.first {
                 setCurrentImage(first)
             }
@@ -120,6 +121,7 @@ extension ContentViewModel {
         currentImageURL = url
         imageViewerZoom = 1
         imageFullscreenZoom = 1
+        imageFullscreenOffset = .zero
 
         currentImage = NSImage(contentsOf: url)
         currentImagePixelSize = imagePixelSize(for: url) ?? .zero
@@ -129,6 +131,7 @@ extension ContentViewModel {
 
     func removeSelectedImageFile(_ url: URL) {
         selectedImageFiles.removeAll { $0 == url }
+        selectedImageFileSet.remove(url)
         if currentImageURL == url {
             currentImageURL = nil
             currentImage = nil
@@ -141,14 +144,52 @@ extension ContentViewModel {
         }
     }
 
+    func toggleImageFileSelection(_ url: URL) {
+        if selectedImageFileSet.contains(url) {
+            selectedImageFileSet.remove(url)
+        } else {
+            selectedImageFileSet.insert(url)
+        }
+    }
+
+    func selectAllImageFiles() {
+        selectedImageFileSet = Set(selectedImageFiles)
+    }
+
+    func clearImageFileSelection() {
+        selectedImageFileSet.removeAll()
+    }
+
+    func removeSelectedImageFiles() {
+        guard !selectedImageFileSet.isEmpty else { return }
+        let removing = selectedImageFileSet
+        selectedImageFiles.removeAll { removing.contains($0) }
+        if let currentImageURL, removing.contains(currentImageURL) {
+            self.currentImageURL = nil
+            currentImage = nil
+            currentImagePixelSize = .zero
+            currentImageFileSizeBytes = 0
+            if let next = selectedImageFiles.first {
+                setCurrentImage(next)
+            }
+        }
+        selectedImageFileSet.removeAll()
+        if selectedImageFiles.isEmpty {
+            imageFullscreenPresented = false
+        }
+        appendAppLog("图片查看器：已批量移除图片。")
+    }
+
     func presentImageFullscreen() {
         guard currentImage != nil else { return }
         imageFullscreenZoom = 1
+        imageFullscreenOffset = .zero
         imageFullscreenPresented = true
     }
 
     func dismissImageFullscreen() {
         imageFullscreenPresented = false
+        imageSlideshowEnabled = false
     }
 
     func showNextImage() {
@@ -179,6 +220,11 @@ extension ContentViewModel {
     func adjustFullscreenImageZoom(with deltaY: CGFloat) {
         let sensitivity = max(-0.6, min(0.6, Double(deltaY) / 600.0))
         imageFullscreenZoom = min(8.0, max(0.2, imageFullscreenZoom - sensitivity))
+    }
+
+    func dragFullscreenImage(by translation: CGSize) {
+        imageFullscreenOffset.width += translation.width
+        imageFullscreenOffset.height += translation.height
     }
 
     func exportSelectedImagesAsJPEG() {

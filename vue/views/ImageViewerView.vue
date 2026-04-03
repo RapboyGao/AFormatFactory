@@ -23,6 +23,8 @@
         >
           批量导出 JPEG
         </v-btn>
+        <v-btn variant="tonal" class="ml-2" :disabled="!images.length" @click="selectAllImages">全选</v-btn>
+        <v-btn variant="tonal" class="ml-2" :disabled="!selectedImages.length" @click="deleteSelectedImages">删除选中</v-btn>
       </div>
 
       <v-row>
@@ -39,6 +41,12 @@
                 @click="setActiveImage(image)"
               >
                 <template #prepend>
+                  <v-btn
+                    size="x-small"
+                    variant="text"
+                    :icon="selectedImages.includes(image) ? 'mdi-checkbox-marked-circle' : 'mdi-checkbox-blank-circle-outline'"
+                    @click.stop="toggleImageSelection(image)"
+                  />
                   <div class="text-caption text-medium-emphasis mr-3" style="width: 22px">{{ index + 1 }}</div>
                 </template>
                 <v-list-item-title class="text-body-2">{{ fileName(image) }}</v-list-item-title>
@@ -95,6 +103,15 @@
             <div class="text-caption text-medium-emphasis">滚轮缩放 | 左键下一张 | 右键上一张</div>
           </div>
           <v-spacer />
+          <v-switch v-model="slideshowEnabled" hide-details inset label="自动播放" class="mr-3" />
+          <v-select
+            v-model="slideshowInterval"
+            :items="[1, 2, 3, 5, 10]"
+            density="compact"
+            hide-details
+            variant="outlined"
+            class="mr-3 fullscreen-interval"
+          />
           <div class="text-caption text-medium-emphasis mr-4">{{ Math.round(fullscreenZoom * 100) }}%</div>
           <v-btn variant="tonal" prepend-icon="mdi-close" @click="closeFullscreen">退出全屏</v-btn>
         </div>
@@ -102,8 +119,11 @@
         <div
           class="image-fullscreen-stage"
           @wheel.prevent="onFullscreenWheel"
-          @click="showNextImage"
+          @click="handleStageClick"
           @contextmenu.prevent="showPreviousImage"
+          @mousemove="onDragMove"
+          @mouseup="stopDrag"
+          @mouseleave="stopDrag"
         >
           <img
             v-if="previewSrc"
@@ -111,6 +131,7 @@
             :style="fullscreenImageStyle"
             class="image-fullscreen-image"
             draggable="false"
+            @mousedown.left.prevent="startDrag"
           />
         </div>
       </div>
@@ -119,12 +140,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { api } from '@/types/api';
 import { useQueueStore } from '@/stores/queue';
 
 const queue = useQueueStore();
 const images = ref<string[]>([]);
+const selectedImages = ref<string[]>([]);
 const activeImage = ref<string>('');
 const previewSrc = ref('');
 const zoom = ref(1);
@@ -133,6 +155,17 @@ const pixelHeight = ref(0);
 const fileSizeBytes = ref(0);
 const isFullscreen = ref(false);
 const fullscreenZoom = ref(1);
+const fullscreenPanX = ref(0);
+const fullscreenPanY = ref(0);
+const slideshowEnabled = ref(false);
+const slideshowInterval = ref(3);
+const isDragging = ref(false);
+const suppressNextClick = ref(false);
+const dragStartX = ref(0);
+const dragStartY = ref(0);
+const panStartX = ref(0);
+const panStartY = ref(0);
+let slideshowTimer: ReturnType<typeof setInterval> | undefined;
 
 const imageInfo = computed(() => {
   if (!activeImage.value || pixelWidth.value <= 0 || pixelHeight.value <= 0) {
@@ -148,8 +181,10 @@ const imageStyle = computed(() => ({
 }));
 
 const fullscreenImageStyle = computed(() => ({
-  width: `${Math.max(window.innerWidth * 0.65, pixelWidth.value * fullscreenZoom.value)}px`,
-  maxWidth: 'none'
+  maxWidth: '84vw',
+  maxHeight: '84vh',
+  transform: `translate(${fullscreenPanX.value}px, ${fullscreenPanY.value}px) scale(${fullscreenZoom.value})`,
+  transformOrigin: 'center center'
 }));
 
 const fileName = (path: string): string => path.split('/').pop() || path;
@@ -175,11 +210,13 @@ const selectImages = async (): Promise<void> => {
   const selected = await api.pickImageFiles();
   if (!selected.length) return;
   images.value = selected;
+  selectedImages.value = [];
   await setActiveImage(selected[0] ?? '');
 };
 
 const removeImage = (path: string): void => {
   images.value = images.value.filter((item) => item !== path);
+  selectedImages.value = selectedImages.value.filter((item) => item !== path);
   if (activeImage.value === path) {
     previewSrc.value = '';
     isFullscreen.value = false;
@@ -191,6 +228,39 @@ const removeImage = (path: string): void => {
       pixelHeight.value = 0;
       zoom.value = 1;
       fileSizeBytes.value = 0;
+    }
+  }
+};
+
+const selectAllImages = (): void => {
+  selectedImages.value = [...images.value];
+};
+
+const toggleImageSelection = (path: string): void => {
+  if (selectedImages.value.includes(path)) {
+    selectedImages.value = selectedImages.value.filter((item) => item !== path);
+  } else {
+    selectedImages.value = [...selectedImages.value, path];
+  }
+};
+
+const deleteSelectedImages = (): void => {
+  if (!selectedImages.value.length) return;
+  const removing = new Set(selectedImages.value);
+  images.value = images.value.filter((item) => !removing.has(item));
+  selectedImages.value = [];
+  if (removing.has(activeImage.value)) {
+    previewSrc.value = '';
+    isFullscreen.value = false;
+    const next = images.value[0] ?? '';
+    if (next) {
+      void setActiveImage(next);
+    } else {
+      activeImage.value = '';
+      pixelWidth.value = 0;
+      pixelHeight.value = 0;
+      fileSizeBytes.value = 0;
+      zoom.value = 1;
     }
   }
 };
@@ -214,17 +284,22 @@ const exportJpeg = async (): Promise<void> => {
 const openFullscreen = (): void => {
   if (!activeImage.value || !previewSrc.value) return;
   fullscreenZoom.value = 1;
+  fullscreenPanX.value = 0;
+  fullscreenPanY.value = 0;
   isFullscreen.value = true;
 };
 
 const closeFullscreen = (): void => {
   isFullscreen.value = false;
+  slideshowEnabled.value = false;
 };
 
 const showNextImage = (): void => {
   if (!images.value.length) return;
   const currentIndex = images.value.indexOf(activeImage.value);
   const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % images.value.length : 0;
+  fullscreenPanX.value = 0;
+  fullscreenPanY.value = 0;
   void setActiveImage(images.value[nextIndex] ?? '');
 };
 
@@ -232,6 +307,8 @@ const showPreviousImage = (): void => {
   if (!images.value.length) return;
   const currentIndex = images.value.indexOf(activeImage.value);
   const previousIndex = currentIndex > 0 ? currentIndex - 1 : images.value.length - 1;
+  fullscreenPanX.value = 0;
+  fullscreenPanY.value = 0;
   void setActiveImage(images.value[previousIndex] ?? '');
 };
 
@@ -239,6 +316,76 @@ const onFullscreenWheel = (event: WheelEvent): void => {
   const delta = Math.max(-0.6, Math.min(0.6, event.deltaY / 600));
   fullscreenZoom.value = Math.max(0.2, Math.min(8, fullscreenZoom.value - delta));
 };
+
+const startDrag = (event: MouseEvent): void => {
+  if (!isFullscreen.value) return;
+  isDragging.value = true;
+  suppressNextClick.value = false;
+  dragStartX.value = event.clientX;
+  dragStartY.value = event.clientY;
+  panStartX.value = fullscreenPanX.value;
+  panStartY.value = fullscreenPanY.value;
+};
+
+const onDragMove = (event: MouseEvent): void => {
+  if (!isDragging.value) return;
+  const dx = event.clientX - dragStartX.value;
+  const dy = event.clientY - dragStartY.value;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+    suppressNextClick.value = true;
+  }
+  fullscreenPanX.value = panStartX.value + dx;
+  fullscreenPanY.value = panStartY.value + dy;
+};
+
+const stopDrag = (): void => {
+  isDragging.value = false;
+};
+
+const handleStageClick = (): void => {
+  if (suppressNextClick.value) {
+    suppressNextClick.value = false;
+    return;
+  }
+  showNextImage();
+};
+
+const handleKeydown = (event: KeyboardEvent): void => {
+  if (!isFullscreen.value) return;
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    showPreviousImage();
+  } else if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    showNextImage();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    closeFullscreen();
+  }
+};
+
+const refreshSlideshow = (): void => {
+  if (slideshowTimer) {
+    clearInterval(slideshowTimer);
+    slideshowTimer = undefined;
+  }
+  if (isFullscreen.value && slideshowEnabled.value) {
+    slideshowTimer = setInterval(() => {
+      showNextImage();
+    }, slideshowInterval.value * 1000);
+  }
+};
+
+watch([isFullscreen, slideshowEnabled, slideshowInterval], refreshSlideshow);
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown);
+  if (slideshowTimer) clearInterval(slideshowTimer);
+});
 </script>
 
 <style scoped>
@@ -328,6 +475,11 @@ const onFullscreenWheel = (event: WheelEvent): void => {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
   user-select: none;
   -webkit-user-drag: none;
+  cursor: grab;
+}
+
+.fullscreen-interval {
+  width: 88px;
 }
 
 </style>
