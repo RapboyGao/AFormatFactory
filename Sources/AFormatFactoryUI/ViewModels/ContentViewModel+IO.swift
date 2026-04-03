@@ -119,6 +119,7 @@ extension ContentViewModel {
     func setCurrentImage(_ url: URL) {
         currentImageURL = url
         imageViewerZoom = 1
+        imageFullscreenZoom = 1
 
         currentImage = NSImage(contentsOf: url)
         currentImagePixelSize = imagePixelSize(for: url) ?? .zero
@@ -133,10 +134,51 @@ extension ContentViewModel {
             currentImage = nil
             currentImagePixelSize = .zero
             currentImageFileSizeBytes = 0
+            imageFullscreenPresented = false
             if let next = selectedImageFiles.first {
                 setCurrentImage(next)
             }
         }
+    }
+
+    func presentImageFullscreen() {
+        guard currentImage != nil else { return }
+        imageFullscreenZoom = 1
+        imageFullscreenPresented = true
+    }
+
+    func dismissImageFullscreen() {
+        imageFullscreenPresented = false
+    }
+
+    func showNextImage() {
+        guard !selectedImageFiles.isEmpty else { return }
+        guard let current = currentImageURL, let index = selectedImageFiles.firstIndex(of: current) else {
+            if let first = selectedImageFiles.first {
+                setCurrentImage(first)
+            }
+            return
+        }
+        let nextIndex = selectedImageFiles.index(after: index)
+        let resolvedIndex = nextIndex == selectedImageFiles.endIndex ? selectedImageFiles.startIndex : nextIndex
+        setCurrentImage(selectedImageFiles[resolvedIndex])
+    }
+
+    func showPreviousImage() {
+        guard !selectedImageFiles.isEmpty else { return }
+        guard let current = currentImageURL, let index = selectedImageFiles.firstIndex(of: current) else {
+            if let first = selectedImageFiles.first {
+                setCurrentImage(first)
+            }
+            return
+        }
+        let resolvedIndex = index == selectedImageFiles.startIndex ? selectedImageFiles.index(before: selectedImageFiles.endIndex) : selectedImageFiles.index(before: index)
+        setCurrentImage(selectedImageFiles[resolvedIndex])
+    }
+
+    func adjustFullscreenImageZoom(with deltaY: CGFloat) {
+        let sensitivity = max(-0.6, min(0.6, Double(deltaY) / 600.0))
+        imageFullscreenZoom = min(8.0, max(0.2, imageFullscreenZoom - sensitivity))
     }
 
     func exportSelectedImagesAsJPEG() {

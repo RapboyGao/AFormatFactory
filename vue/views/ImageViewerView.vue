@@ -10,7 +10,7 @@
           prepend-icon="mdi-fullscreen"
           class="ml-2"
           :disabled="!activeImage || !previewSrc"
-          @click="isFullscreen = true"
+          @click="openFullscreen"
         >
           全屏预览
         </v-btn>
@@ -70,7 +70,7 @@
                 :style="imageStyle"
                 class="viewer-image"
                 @load="onImageLoad"
-                @dblclick="isFullscreen = true"
+                @dblclick="openFullscreen"
               />
               <div v-else class="viewer-loading">正在生成预览...</div>
             </div>
@@ -87,18 +87,34 @@
       </v-row>
     </v-card>
 
-    <v-dialog v-model="isFullscreen" fullscreen scrim="black">
-      <v-card class="fullscreen-shell">
-        <div class="fullscreen-toolbar">
-          <div class="text-subtitle-1">{{ fileName(activeImage) }}</div>
+    <Teleport to="body">
+      <div v-if="isFullscreen" class="image-fullscreen-root">
+        <div class="image-fullscreen-toolbar" @click.stop>
+          <div>
+            <div class="text-subtitle-1">{{ fileName(activeImage) }}</div>
+            <div class="text-caption text-medium-emphasis">滚轮缩放 | 左键下一张 | 右键上一张</div>
+          </div>
           <v-spacer />
-          <v-btn variant="tonal" prepend-icon="mdi-close" @click="isFullscreen = false">退出全屏</v-btn>
+          <div class="text-caption text-medium-emphasis mr-4">{{ Math.round(fullscreenZoom * 100) }}%</div>
+          <v-btn variant="tonal" prepend-icon="mdi-close" @click="closeFullscreen">退出全屏</v-btn>
         </div>
-        <div class="fullscreen-frame" @click.self="isFullscreen = false">
-          <img v-if="previewSrc" :src="previewSrc" class="fullscreen-image" />
+
+        <div
+          class="image-fullscreen-stage"
+          @wheel.prevent="onFullscreenWheel"
+          @click="showNextImage"
+          @contextmenu.prevent="showPreviousImage"
+        >
+          <img
+            v-if="previewSrc"
+            :src="previewSrc"
+            :style="fullscreenImageStyle"
+            class="image-fullscreen-image"
+            draggable="false"
+          />
         </div>
-      </v-card>
-    </v-dialog>
+      </div>
+    </Teleport>
   </v-container>
 </template>
 
@@ -116,6 +132,7 @@ const pixelWidth = ref(0);
 const pixelHeight = ref(0);
 const fileSizeBytes = ref(0);
 const isFullscreen = ref(false);
+const fullscreenZoom = ref(1);
 
 const imageInfo = computed(() => {
   if (!activeImage.value || pixelWidth.value <= 0 || pixelHeight.value <= 0) {
@@ -127,6 +144,11 @@ const imageInfo = computed(() => {
 
 const imageStyle = computed(() => ({
   width: `${Math.max(120, pixelWidth.value * zoom.value)}px`,
+  maxWidth: 'none'
+}));
+
+const fullscreenImageStyle = computed(() => ({
+  width: `${Math.max(window.innerWidth * 0.65, pixelWidth.value * fullscreenZoom.value)}px`,
   maxWidth: 'none'
 }));
 
@@ -188,6 +210,35 @@ const exportJpeg = async (): Promise<void> => {
     queue.pushLog(`图片导出失败: ${String(error)}`);
   }
 };
+
+const openFullscreen = (): void => {
+  if (!activeImage.value || !previewSrc.value) return;
+  fullscreenZoom.value = 1;
+  isFullscreen.value = true;
+};
+
+const closeFullscreen = (): void => {
+  isFullscreen.value = false;
+};
+
+const showNextImage = (): void => {
+  if (!images.value.length) return;
+  const currentIndex = images.value.indexOf(activeImage.value);
+  const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % images.value.length : 0;
+  void setActiveImage(images.value[nextIndex] ?? '');
+};
+
+const showPreviousImage = (): void => {
+  if (!images.value.length) return;
+  const currentIndex = images.value.indexOf(activeImage.value);
+  const previousIndex = currentIndex > 0 ? currentIndex - 1 : images.value.length - 1;
+  void setActiveImage(images.value[previousIndex] ?? '');
+};
+
+const onFullscreenWheel = (event: WheelEvent): void => {
+  const delta = Math.max(-0.6, Math.min(0.6, event.deltaY / 600));
+  fullscreenZoom.value = Math.max(0.2, Math.min(8, fullscreenZoom.value - delta));
+};
 </script>
 
 <style scoped>
@@ -240,34 +291,43 @@ const exportJpeg = async (): Promise<void> => {
   color: rgba(255, 255, 255, 0.65);
 }
 
-.fullscreen-shell {
+.image-fullscreen-root {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
   background:
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 30%),
-    linear-gradient(180deg, rgba(8, 10, 16, 0.98), rgba(12, 14, 20, 1));
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.05), transparent 28%),
+    linear-gradient(180deg, rgba(5, 8, 14, 0.985), rgba(10, 12, 18, 0.995));
 }
 
-.fullscreen-toolbar {
+.image-fullscreen-toolbar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  gap: 16px;
+  padding: 18px 22px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0));
 }
 
-.fullscreen-frame {
-  height: calc(100vh - 72px);
+.image-fullscreen-stage {
+  position: absolute;
+  inset: 0;
   overflow: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 32px;
 }
 
-.fullscreen-image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 18px;
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+.image-fullscreen-image {
+  display: block;
+  height: auto;
+  border-radius: 20px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
+  user-select: none;
+  -webkit-user-drag: none;
 }
+
 </style>

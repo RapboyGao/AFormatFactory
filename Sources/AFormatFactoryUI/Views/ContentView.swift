@@ -60,29 +60,35 @@ public struct ContentView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
-            WorkspaceSidebarView(viewModel: viewModel, selectedSection: $selectedSection)
-        } detail: {
-            ScrollView {
-                VStack(spacing: 12) {
-                    switch selectedSection ?? .videoConvert {
-                    case .videoConvert:
-                        ConversionWorkspaceView(viewModel: viewModel, selectedSection: $selectedSection, targetDomain: .video)
-                    case .audioConvert:
-                        ConversionWorkspaceView(viewModel: viewModel, selectedSection: $selectedSection, targetDomain: .audio)
-                    case .mediaEdit:
-                        MediaEditWorkspaceView(viewModel: viewModel)
-                    case .imageViewer:
-                        ImageViewerWorkspaceView(viewModel: viewModel)
-                    case .tasks:
-                        TaskWorkspaceView(viewModel: viewModel)
-                    case .appLog:
-                        AppLogCardView(viewModel: viewModel)
+        ZStack {
+            NavigationSplitView {
+                WorkspaceSidebarView(viewModel: viewModel, selectedSection: $selectedSection)
+            } detail: {
+                ScrollView {
+                    VStack(spacing: 12) {
+                        switch selectedSection ?? .videoConvert {
+                        case .videoConvert:
+                            ConversionWorkspaceView(viewModel: viewModel, selectedSection: $selectedSection, targetDomain: .video)
+                        case .audioConvert:
+                            ConversionWorkspaceView(viewModel: viewModel, selectedSection: $selectedSection, targetDomain: .audio)
+                        case .mediaEdit:
+                            MediaEditWorkspaceView(viewModel: viewModel)
+                        case .imageViewer:
+                            ImageViewerWorkspaceView(viewModel: viewModel)
+                        case .tasks:
+                            TaskWorkspaceView(viewModel: viewModel)
+                        case .appLog:
+                            AppLogCardView(viewModel: viewModel)
+                        }
                     }
+                    .padding(14)
                 }
-                .padding(14)
+                .background(backgroundLayer)
             }
-            .background(backgroundLayer)
+
+            if viewModel.imageFullscreenPresented {
+                ImageFullscreenOverlayView(viewModel: viewModel)
+            }
         }
         .navigationSplitViewStyle(.balanced)
         .preferredColorScheme(.dark)
