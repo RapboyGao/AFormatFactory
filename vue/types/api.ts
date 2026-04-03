@@ -13,6 +13,7 @@ export const api = {
   pickInputFiles: () => invoke<string[]>('pick_input_files'),
   pickImageFiles: () => invoke<string[]>('pick_image_files'),
   pickOutputDirectory: () => invoke<string | null>('pick_output_directory'),
+  renderImagePreview: (inputPath: string) => invoke<{ preview_path: string; file_size_bytes: number }>('render_image_preview', { inputPath }),
   exportImageAsJpeg: (inputPath: string) => invoke<string>('export_image_as_jpeg', { inputPath }),
   reorderTasks: (orderedIds: string[]) => invoke<void>('reorder_tasks', { orderedIds }),
   detectCapabilities: () => invoke<{ muxers: string[]; encoders: string[] }>('detect_capabilities'),

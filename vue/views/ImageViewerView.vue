@@ -7,6 +7,15 @@
         <v-btn variant="tonal" prepend-icon="mdi-image-search-outline" @click="selectImages">选择图片</v-btn>
         <v-btn
           variant="tonal"
+          prepend-icon="mdi-fullscreen"
+          class="ml-2"
+          :disabled="!activeImage || !previewSrc"
+          @click="isFullscreen = true"
+        >
+          全屏预览
+        </v-btn>
+        <v-btn
+          variant="tonal"
           prepend-icon="mdi-file-jpg-box"
           class="ml-2"
           :disabled="!activeImage"
@@ -27,7 +36,7 @@
                 :key="image"
                 rounded="lg"
                 :active="image === activeImage"
-                @click="activeImage = image"
+                @click="setActiveImage(image)"
               >
                 <template #prepend>
                   <div class="text-caption text-medium-emphasis mr-3" style="width: 22px">{{ index + 1 }}</div>
@@ -55,7 +64,15 @@
               <div>选择一张 HEIC/HIF/HEIF 图片后开始查看</div>
             </div>
             <div v-else class="viewer-frame">
-              <img :src="imageSrc(activeImage)" :style="imageStyle" class="viewer-image" @load="onImageLoad" />
+              <img
+                v-if="previewSrc"
+                :src="previewSrc"
+                :style="imageStyle"
+                class="viewer-image"
+                @load="onImageLoad"
+                @dblclick="isFullscreen = true"
+              />
+              <div v-else class="viewer-loading">正在生成预览...</div>
             </div>
 
             <div class="d-flex align-center mt-4 ga-3">
@@ -69,6 +86,19 @@
         </v-col>
       </v-row>
     </v-card>
+
+    <v-dialog v-model="isFullscreen" fullscreen scrim="black">
+      <v-card class="fullscreen-shell">
+        <div class="fullscreen-toolbar">
+          <div class="text-subtitle-1">{{ fileName(activeImage) }}</div>
+          <v-spacer />
+          <v-btn variant="tonal" prepend-icon="mdi-close" @click="isFullscreen = false">退出全屏</v-btn>
+        </div>
+        <div class="fullscreen-frame" @click.self="isFullscreen = false">
+          <img v-if="previewSrc" :src="previewSrc" class="fullscreen-image" />
+        </div>
+      </v-card>
+    </v-dialog>
   </v-container>
 </template>
 
@@ -81,15 +111,19 @@ import { useQueueStore } from '@/stores/queue';
 const queue = useQueueStore();
 const images = ref<string[]>([]);
 const activeImage = ref<string>('');
+const previewSrc = ref('');
 const zoom = ref(1);
 const pixelWidth = ref(0);
 const pixelHeight = ref(0);
+const fileSizeBytes = ref(0);
+const isFullscreen = ref(false);
 
 const imageInfo = computed(() => {
   if (!activeImage.value || pixelWidth.value <= 0 || pixelHeight.value <= 0) {
     return activeImage.value ? fileName(activeImage.value) : '无选中图片';
   }
-  return `${pixelWidth.value} x ${pixelHeight.value}`;
+  const mb = fileSizeBytes.value > 0 ? ` | ${(fileSizeBytes.value / 1_048_576).toFixed(2)} MB` : '';
+  return `${pixelWidth.value} x ${pixelHeight.value}${mb}`;
 });
 
 const imageStyle = computed(() => ({
@@ -99,25 +133,44 @@ const imageStyle = computed(() => ({
 
 const fileName = (path: string): string => path.split('/').pop() || path;
 
-const imageSrc = (path: string): string => convertFileSrc(path);
+const setActiveImage = async (path: string): Promise<void> => {
+  activeImage.value = path;
+  zoom.value = 1;
+  pixelWidth.value = 0;
+  pixelHeight.value = 0;
+  previewSrc.value = '';
+  fileSizeBytes.value = 0;
+
+  try {
+    const result = await api.renderImagePreview(path);
+    previewSrc.value = convertFileSrc(result.preview_path);
+    fileSizeBytes.value = result.file_size_bytes;
+  } catch (error) {
+    queue.pushLog(`图片预览失败: ${String(error)}`);
+  }
+};
 
 const selectImages = async (): Promise<void> => {
   const selected = await api.pickImageFiles();
   if (!selected.length) return;
   images.value = selected;
-  activeImage.value = selected[0] ?? '';
-  zoom.value = 1;
-  pixelWidth.value = 0;
-  pixelHeight.value = 0;
+  await setActiveImage(selected[0] ?? '');
 };
 
 const removeImage = (path: string): void => {
   images.value = images.value.filter((item) => item !== path);
   if (activeImage.value === path) {
-    activeImage.value = images.value[0] ?? '';
-    pixelWidth.value = 0;
-    pixelHeight.value = 0;
-    zoom.value = 1;
+    previewSrc.value = '';
+    isFullscreen.value = false;
+    if (images.value[0]) {
+      void setActiveImage(images.value[0]);
+    } else {
+      activeImage.value = '';
+      pixelWidth.value = 0;
+      pixelHeight.value = 0;
+      zoom.value = 1;
+      fileSizeBytes.value = 0;
+    }
   }
 };
 
@@ -177,5 +230,45 @@ const exportJpeg = async (): Promise<void> => {
   background:
     radial-gradient(circle at center, rgba(255, 255, 255, 0.05), transparent 40%),
     linear-gradient(180deg, rgba(10, 14, 22, 0.96), rgba(18, 24, 34, 0.92));
+}
+
+.viewer-loading {
+  min-height: 560px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.fullscreen-shell {
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.06), transparent 30%),
+    linear-gradient(180deg, rgba(8, 10, 16, 0.98), rgba(12, 14, 20, 1));
+}
+
+.fullscreen-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fullscreen-frame {
+  height: calc(100vh - 72px);
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.fullscreen-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
 }
 </style>

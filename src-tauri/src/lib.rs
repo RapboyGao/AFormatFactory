@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -108,6 +109,12 @@ struct Capabilities {
     encoders: Vec<String>,
 }
 
+#[derive(Debug, Serialize)]
+struct ImagePreviewResult {
+    preview_path: String,
+    file_size_bytes: u64,
+}
+
 struct RuntimeTask {
     ui: QueueTask,
     draft: ConversionTaskDraft,
@@ -183,6 +190,34 @@ fn last_error() -> String {
 
 fn cstring(value: &str) -> Result<CString, String> {
     CString::new(value).map_err(|_| format!("string contains null byte: {value}"))
+}
+
+fn sanitized_file_stem(path: &Path) -> String {
+    path.file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image")
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
+        .collect()
+}
+
+fn preview_output_path(input: &Path) -> Result<PathBuf, String> {
+    let metadata = std::fs::metadata(input).map_err(|err| err.to_string())?;
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|value| value.duration_since(SystemTime::UNIX_EPOCH).ok())
+        .map(|value| value.as_secs())
+        .unwrap_or(0);
+
+    let preview_dir = std::env::temp_dir().join("aformatfactory-image-preview");
+    std::fs::create_dir_all(&preview_dir).map_err(|err| err.to_string())?;
+    Ok(preview_dir.join(format!(
+        "{}-{}-{}.png",
+        sanitized_file_stem(input),
+        metadata.len(),
+        modified
+    )))
 }
 
 fn set_task_status(shared: &SharedState, task_id: &str, status: TaskStatus, error: Option<String>) {
@@ -495,6 +530,35 @@ fn pick_output_directory() -> Option<String> {
 }
 
 #[tauri::command]
+fn render_image_preview(input_path: String) -> Result<ImagePreviewResult, String> {
+    let input = PathBuf::from(&input_path);
+    if !input.exists() {
+        return Err("input image not found".to_string());
+    }
+
+    let output = preview_output_path(&input)?;
+    let status = Command::new("sips")
+        .arg("-s")
+        .arg("format")
+        .arg("png")
+        .arg(&input)
+        .arg("--out")
+        .arg(&output)
+        .status()
+        .map_err(|err| err.to_string())?;
+
+    if !status.success() {
+        return Err("failed to render image preview".to_string());
+    }
+
+    let file_size_bytes = std::fs::metadata(&input).map_err(|err| err.to_string())?.len();
+    Ok(ImagePreviewResult {
+        preview_path: output.to_string_lossy().to_string(),
+        file_size_bytes,
+    })
+}
+
+#[tauri::command]
 fn export_image_as_jpeg(input_path: String) -> Result<String, String> {
     let input = std::path::PathBuf::from(&input_path);
     if !input.exists() {
@@ -684,6 +748,7 @@ pub fn run() {
             pick_input_files,
             pick_image_files,
             pick_output_directory,
+            render_image_preview,
             export_image_as_jpeg,
             reorder_tasks,
             detect_capabilities,

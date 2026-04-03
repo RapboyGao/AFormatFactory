@@ -3,11 +3,20 @@ import SwiftUI
 /// HEIC/HIF/HEIF 图片查看工作区，使用系统原生解码显示并支持导出 JPEG。
 struct ImageViewerWorkspaceView: View {
     @ObservedObject var viewModel: ContentViewModel
+    @State private var isFullscreenPresented = false
 
     var body: some View {
-        VStack(spacing: 12) {
-            toolbarCard
-            contentCard
+        ZStack {
+            VStack(spacing: 12) {
+                toolbarCard
+                contentCard
+            }
+
+            if isFullscreenPresented {
+                fullscreenViewer
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
         }
     }
 
@@ -29,6 +38,12 @@ struct ImageViewerWorkspaceView: View {
                 }
                 .buttonStyle(MaterialActionButtonStyle())
                 .disabled(viewModel.currentImageURL == nil)
+
+                Button("全屏预览") {
+                    isFullscreenPresented = true
+                }
+                .buttonStyle(MaterialActionButtonStyle())
+                .disabled(viewModel.currentImage == nil)
             }
 
             if let url = viewModel.currentImageURL {
@@ -118,6 +133,9 @@ struct ImageViewerWorkspaceView: View {
                             height: max(180, image.size.height * viewModel.imageViewerZoom)
                         )
                         .padding(18)
+                        .onTapGesture(count: 2) {
+                            isFullscreenPresented = true
+                        }
                 }
                 .frame(maxWidth: .infinity, minHeight: 420)
                 .background(Color.black.opacity(0.34))
@@ -158,6 +176,29 @@ struct ImageViewerWorkspaceView: View {
         let height = Int(size.height)
         let mb = Double(viewModel.currentImageFileSizeBytes) / 1_048_576.0
         return "\(width)x\(height) | \(String(format: "%.2f", mb)) MB"
+    }
+
+    private var fullscreenViewer: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.opacity(0.98)
+                .ignoresSafeArea()
+
+            if let image = viewModel.currentImage {
+                ScrollView([.horizontal, .vertical]) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .padding(24)
+                }
+            }
+
+            Button("退出全屏") {
+                isFullscreenPresented = false
+            }
+            .buttonStyle(MaterialActionButtonStyle())
+            .padding(20)
+        }
     }
 }
 
