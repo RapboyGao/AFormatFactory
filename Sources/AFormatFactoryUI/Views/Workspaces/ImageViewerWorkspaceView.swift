@@ -7,6 +7,7 @@ struct ImageViewerWorkspaceView: View {
     var body: some View {
         VStack(spacing: 12) {
             toolbarCard
+            exportProgressCard
             contentCard
         }
     }
@@ -28,7 +29,7 @@ struct ImageViewerWorkspaceView: View {
                     viewModel.exportSelectedImagesAsJPEG()
                 }
                 .buttonStyle(MaterialActionButtonStyle())
-                .disabled(viewModel.selectedImageFiles.isEmpty)
+                .disabled(viewModel.selectedImageFiles.isEmpty || viewModel.imageExportInProgress)
 
                 Button("全屏预览") {
                     viewModel.presentImageFullscreen()
@@ -57,6 +58,34 @@ struct ImageViewerWorkspaceView: View {
             fileList
                 .frame(width: 320)
             previewPanel
+        }
+    }
+
+    @ViewBuilder
+    private var exportProgressCard: some View {
+        if viewModel.imageExportInProgress || viewModel.imageExportCompletedCount > 0 {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("JPEG 导出进度")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.84))
+                    Spacer()
+                    Text("\(viewModel.imageExportCompletedCount)/\(max(1, viewModel.imageExportTotalCount))")
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+
+                ProgressView(value: Double(viewModel.imageExportCompletedCount), total: Double(max(1, viewModel.imageExportTotalCount)))
+                    .tint(.white)
+
+                if let outputDirectory = viewModel.imageExportLastOutputDirectory {
+                    Text(outputDirectory.path)
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.62))
+                        .lineLimit(2)
+                }
+            }
+            .cardStyle()
         }
     }
 

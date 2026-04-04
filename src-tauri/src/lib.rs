@@ -226,6 +226,33 @@ fn preview_output_path(app: &tauri::AppHandle, input: &Path) -> Result<PathBuf, 
     )))
 }
 
+fn ensure_preview_jpeg(app: &tauri::AppHandle, input: &Path) -> Result<PathBuf, String> {
+    if !input.exists() {
+        return Err("input image not found".to_string());
+    }
+
+    let output = preview_output_path(app, input)?;
+    if output.exists() {
+        return Ok(output);
+    }
+
+    let status = Command::new("sips")
+        .arg("-s")
+        .arg("format")
+        .arg("jpeg")
+        .arg(input)
+        .arg("--out")
+        .arg(&output)
+        .status()
+        .map_err(|err| err.to_string())?;
+
+    if !status.success() {
+        return Err(format!("failed to render image preview: {}", input.display()));
+    }
+
+    Ok(output)
+}
+
 fn set_task_status(shared: &SharedState, task_id: &str, status: TaskStatus, error: Option<String>) {
     let mut queue = shared.queue.lock().expect("queue poisoned");
     if let Some(task) = queue.tasks.iter_mut().find(|t| t.ui.id == task_id) {
@@ -404,6 +431,41 @@ async fn scheduler_loop(shared: SharedState) {
 }
 
 #[tauri::command]
+async fn precache_image_previews(app: tauri::AppHandle, input_paths: Vec<String>) -> Result<usize, String> {
+    if input_paths.is_empty() {
+        return Ok(0);
+    }
+
+    let semaphore = Arc::new(tokio::sync::Semaphore::new(num_cpus::get().max(1)));
+    let mut handles = Vec::with_capacity(input_paths.len());
+
+    for input_path in input_paths {
+        let semaphore = semaphore.clone();
+        let app = app.clone();
+        handles.push(tauri::async_runtime::spawn(async move {
+            let permit = semaphore.acquire_owned().await.map_err(|err| err.to_string())?;
+            let path = PathBuf::from(input_path);
+            let result = tauri::async_runtime::spawn_blocking(move || ensure_preview_jpeg(&app, &path))
+                .await
+                .map_err(|err| err.to_string())?;
+            drop(permit);
+            result.map(|_| 1usize)
+        }));
+    }
+
+    let mut success_count = 0usize;
+    for handle in handles {
+        match handle.await {
+            Ok(Ok(count)) => success_count += count,
+            Ok(Err(_)) => {}
+            Err(_) => {}
+        }
+    }
+
+    Ok(success_count)
+}
+
+#[tauri::command]
 fn create_tasks(state: tauri::State<'_, SharedState>, drafts: Vec<ConversionTaskDraft>) -> Result<usize, String> {
     let mut queue = state.queue.lock().expect("queue poisoned");
     let now = now_iso();
@@ -538,24 +600,7 @@ fn pick_output_directory() -> Option<String> {
 #[tauri::command]
 fn render_image_preview(app: tauri::AppHandle, input_path: String) -> Result<ImagePreviewResult, String> {
     let input = PathBuf::from(&input_path);
-    if !input.exists() {
-        return Err("input image not found".to_string());
-    }
-
-    let output = preview_output_path(&app, &input)?;
-    let status = Command::new("sips")
-        .arg("-s")
-        .arg("format")
-        .arg("jpeg")
-        .arg(&input)
-        .arg("--out")
-        .arg(&output)
-        .status()
-        .map_err(|err| err.to_string())?;
-
-    if !status.success() {
-        return Err("failed to render image preview".to_string());
-    }
+    let output = ensure_preview_jpeg(&app, &input)?;
 
     let bytes = std::fs::read(&output).map_err(|err| err.to_string())?;
     let preview_data_url = format!(
@@ -570,56 +615,44 @@ fn render_image_preview(app: tauri::AppHandle, input_path: String) -> Result<Ima
 }
 
 #[tauri::command]
-fn export_images_as_jpeg(input_paths: Vec<String>) -> Result<Vec<String>, String> {
-    if input_paths.is_empty() {
-        return Err("no input images selected".to_string());
+fn export_image_as_jpeg_to_directory(input_path: String, output_directory: String) -> Result<String, String> {
+    let input = PathBuf::from(&input_path);
+    if !input.exists() {
+        return Err("input image not found".to_string());
     }
 
-    let first_input = PathBuf::from(&input_paths[0]);
-    let output_dir = rfd::FileDialog::new()
-        .set_directory(first_input.parent().unwrap_or_else(|| Path::new("/")))
-        .pick_folder()
-        .ok_or_else(|| "export cancelled".to_string())?;
+    let output_dir = PathBuf::from(output_directory);
+    std::fs::create_dir_all(&output_dir).map_err(|err| err.to_string())?;
 
-    let mut outputs = Vec::new();
-    for input_path in input_paths {
-        let input = PathBuf::from(&input_path);
-        if !input.exists() {
-            continue;
+    let file_stem = input
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image");
+    let output = output_dir.join(format!("{file_stem}.jpg"));
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = Command::new("sips")
+            .arg("-s")
+            .arg("format")
+            .arg("jpeg")
+            .arg(&input)
+            .arg("--out")
+            .arg(&output)
+            .status()
+            .map_err(|err| err.to_string())?;
+
+        if !status.success() {
+            return Err(format!("failed to export JPEG: {}", input.display()));
         }
-
-        let file_stem = input
-            .file_stem()
-            .and_then(|value| value.to_str())
-            .unwrap_or("image");
-        let output = output_dir.join(format!("{file_stem}.jpg"));
-
-        #[cfg(target_os = "macos")]
-        {
-            let status = Command::new("sips")
-                .arg("-s")
-                .arg("format")
-                .arg("jpeg")
-                .arg(&input)
-                .arg("--out")
-                .arg(&output)
-                .status()
-                .map_err(|err| err.to_string())?;
-
-            if !status.success() {
-                return Err(format!("failed to export JPEG: {}", input.display()));
-            }
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            return Err("HEIF JPEG export is currently only implemented on macOS".to_string());
-        }
-
-        outputs.push(output.to_string_lossy().to_string());
     }
 
-    Ok(outputs)
+    #[cfg(not(target_os = "macos"))]
+    {
+        return Err("HEIF JPEG export is currently only implemented on macOS".to_string());
+    }
+
+    Ok(output.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -768,8 +801,9 @@ pub fn run() {
             pick_input_files,
             pick_image_files,
             pick_output_directory,
+            precache_image_previews,
             render_image_preview,
-            export_images_as_jpeg,
+            export_image_as_jpeg_to_directory,
             reorder_tasks,
             detect_capabilities,
             run_media_edit

@@ -3,6 +3,58 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
+private let imagePreviewCacheDirectoryURL: URL = {
+    let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        ?? FileManager.default.temporaryDirectory
+    return caches.appendingPathComponent("AFormatFactory/ImagePreviewCache", isDirectory: true)
+}()
+
+private func exportImageAsJPEGToURL(inputURL: URL, outputURL: URL) throws {
+    guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil),
+          let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+        throw NSError(domain: "AFormatFactory.ImageViewer", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "无法读取 HEIC/HIF/HEIF 图像。"
+        ])
+    }
+
+    try FileManager.default.createDirectory(at: imagePreviewCacheDirectoryURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    guard let destination = CGImageDestinationCreateWithURL(outputURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+        throw NSError(domain: "AFormatFactory.ImageViewer", code: 2, userInfo: [
+            NSLocalizedDescriptionKey: "无法创建 JPEG 输出。"
+        ])
+    }
+
+    let properties = [
+        kCGImageDestinationLossyCompressionQuality: 1.0
+    ] as CFDictionary
+    CGImageDestinationAddImage(destination, image, properties)
+
+    guard CGImageDestinationFinalize(destination) else {
+        throw NSError(domain: "AFormatFactory.ImageViewer", code: 3, userInfo: [
+            NSLocalizedDescriptionKey: "JPEG 写入失败。"
+        ])
+    }
+}
+
+private func ensureCachedJPEGForImage(_ inputURL: URL) throws -> URL {
+    try FileManager.default.createDirectory(at: imagePreviewCacheDirectoryURL, withIntermediateDirectories: true)
+    let values = try? inputURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+    let modified = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+    let fileSize = values?.fileSize ?? 0
+    let stem = inputURL.deletingPathExtension().lastPathComponent
+        .replacingOccurrences(of: "[^A-Za-z0-9_-]", with: "_", options: .regularExpression)
+    let outputURL = imagePreviewCacheDirectoryURL
+        .appendingPathComponent("\(stem)-\(fileSize)-\(Int(modified)).jpg")
+
+    if FileManager.default.fileExists(atPath: outputURL.path) {
+        return outputURL
+    }
+
+    try exportImageAsJPEGToURL(inputURL: inputURL, outputURL: outputURL)
+    return outputURL
+}
+
 extension ContentViewModel {
     func ensureDirectoryExists(at directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -110,9 +162,13 @@ extension ContentViewModel {
         if panel.runModal() == .OK {
             selectedImageFiles = panel.urls
             selectedImageFileSet = []
+            imageCacheReadyCount = 0
             if let first = selectedImageFiles.first {
+                _ = try? ensureCachedJPEGForImage(first)
+                imageCacheReadyCount = 1
                 setCurrentImage(first)
             }
+            preheatImageCache(for: Array(selectedImageFiles.dropFirst()))
             appendAppLog("图片查看器：已选择 \(selectedImageFiles.count) 个文件。")
         }
     }
@@ -123,7 +179,11 @@ extension ContentViewModel {
         imageFullscreenZoom = 1
         imageFullscreenOffset = .zero
 
-        currentImage = NSImage(contentsOf: url)
+        if let cachedURL = try? ensureCachedJPEGForImage(url) {
+            currentImage = NSImage(contentsOf: cachedURL)
+        } else {
+            currentImage = NSImage(contentsOf: url)
+        }
         currentImagePixelSize = imagePixelSize(for: url) ?? .zero
         currentImageFileSizeBytes = fileSize(for: url)
         appendAppLog("图片查看器：已加载 \(url.lastPathComponent)")
@@ -227,11 +287,25 @@ extension ContentViewModel {
         imageFullscreenOffset.height += translation.height
     }
 
+    private func preheatImageCache(for urls: [URL]) {
+        guard !urls.isEmpty else { return }
+
+        for url in urls {
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                _ = try? ensureCachedJPEGForImage(url)
+                DispatchQueue.main.async {
+                    self?.imageCacheReadyCount += 1
+                }
+            }
+        }
+    }
+
     func exportSelectedImagesAsJPEG() {
         guard !selectedImageFiles.isEmpty else {
             appendAppLog("图片查看器：请先选择至少一张图片。")
             return
         }
+        guard !imageExportInProgress else { return }
 
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -240,47 +314,37 @@ extension ContentViewModel {
         panel.directoryURL = currentImageURL?.deletingLastPathComponent()
 
         guard panel.runModal() == .OK, let outputDirectory = panel.url else { return }
+        let inputs = selectedImageFiles
+        imageExportInProgress = true
+        imageExportCompletedCount = 0
+        imageExportTotalCount = inputs.count
+        imageExportLastOutputDirectory = outputDirectory
 
-        var successCount = 0
-        for inputURL in selectedImageFiles {
-            let outputURL = outputDirectory
-                .appendingPathComponent(inputURL.deletingPathExtension().lastPathComponent)
-                .appendingPathExtension("jpg")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var successCount = 0
+            for inputURL in inputs {
+                let outputURL = outputDirectory
+                    .appendingPathComponent(inputURL.deletingPathExtension().lastPathComponent)
+                    .appendingPathExtension("jpg")
 
-            do {
-                try exportImageAsJPEG(inputURL: inputURL, outputURL: outputURL)
-                successCount += 1
-            } catch {
-                appendAppLog("图片查看器：导出失败 \(inputURL.lastPathComponent)，\(error.localizedDescription)")
+                do {
+                    try exportImageAsJPEGToURL(inputURL: inputURL, outputURL: outputURL)
+                    successCount += 1
+                } catch {
+                    DispatchQueue.main.async {
+                        self?.appendAppLog("图片查看器：导出失败 \(inputURL.lastPathComponent)，\(error.localizedDescription)")
+                    }
+                }
+
+                DispatchQueue.main.async {
+                    self?.imageExportCompletedCount += 1
+                }
             }
-        }
-        appendAppLog("图片查看器：已批量导出 \(successCount)/\(selectedImageFiles.count) 张 JPEG 到 \(outputDirectory.path)")
-    }
 
-    private func exportImageAsJPEG(inputURL: URL, outputURL: URL) throws {
-        guard let source = CGImageSourceCreateWithURL(inputURL as CFURL, nil),
-              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-            throw NSError(domain: "AFormatFactory.ImageViewer", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "无法读取 HEIC/HIF/HEIF 图像。"
-            ])
-        }
-
-        try ensureDirectoryExists(at: outputURL.deletingLastPathComponent())
-        guard let destination = CGImageDestinationCreateWithURL(outputURL as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
-            throw NSError(domain: "AFormatFactory.ImageViewer", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "无法创建 JPEG 输出。"
-            ])
-        }
-
-        let properties = [
-            kCGImageDestinationLossyCompressionQuality: 1.0
-        ] as CFDictionary
-        CGImageDestinationAddImage(destination, image, properties)
-
-        guard CGImageDestinationFinalize(destination) else {
-            throw NSError(domain: "AFormatFactory.ImageViewer", code: 3, userInfo: [
-                NSLocalizedDescriptionKey: "JPEG 写入失败。"
-            ])
+            DispatchQueue.main.async {
+                self?.imageExportInProgress = false
+                self?.appendAppLog("图片查看器：已批量导出 \(successCount)/\(inputs.count) 张 JPEG 到 \(outputDirectory.path)")
+            }
         }
     }
 

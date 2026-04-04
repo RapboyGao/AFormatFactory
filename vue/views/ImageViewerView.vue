@@ -18,7 +18,7 @@
           variant="tonal"
           prepend-icon="mdi-file-jpg-box"
           class="ml-2"
-          :disabled="!images.length"
+          :disabled="!images.length || exportInProgress"
           @click="exportJpeg"
         >
           批量导出 JPEG
@@ -95,6 +95,16 @@
       </v-row>
     </v-card>
 
+    <v-card v-if="exportInProgress || exportCompletedCount > 0" rounded="xl" class="pa-4 mt-4">
+      <div class="d-flex align-center mb-2">
+        <div class="text-subtitle-1">JPEG 导出进度</div>
+        <v-spacer />
+        <div class="text-caption text-medium-emphasis">{{ exportCompletedCount }}/{{ Math.max(1, exportTotalCount) }}</div>
+      </div>
+      <v-progress-linear :model-value="(exportCompletedCount / Math.max(1, exportTotalCount)) * 100" height="10" rounded />
+      <div v-if="exportDirectory" class="text-caption text-medium-emphasis mt-2">{{ exportDirectory }}</div>
+    </v-card>
+
     <Teleport to="body">
       <div v-if="isFullscreen" class="image-fullscreen-root">
         <div class="image-fullscreen-toolbar" @click.stop>
@@ -157,6 +167,10 @@ const isFullscreen = ref(false);
 const fullscreenZoom = ref(1);
 const fullscreenPanX = ref(0);
 const fullscreenPanY = ref(0);
+const exportInProgress = ref(false);
+const exportCompletedCount = ref(0);
+const exportTotalCount = ref(0);
+const exportDirectory = ref('');
 const slideshowEnabled = ref(false);
 const slideshowInterval = ref(3);
 const isDragging = ref(false);
@@ -212,6 +226,9 @@ const selectImages = async (): Promise<void> => {
   images.value = selected;
   selectedImages.value = [];
   await setActiveImage(selected[0] ?? '');
+  void api.precacheImagePreviews(selected).catch((error) => {
+    queue.pushLog(`图片预缓存失败: ${String(error)}`);
+  });
 };
 
 const removeImage = (path: string): void => {
@@ -273,11 +290,26 @@ const onImageLoad = (event: Event): void => {
 
 const exportJpeg = async (): Promise<void> => {
   if (!images.value.length) return;
+  const outputDirectory = await api.pickOutputDirectory();
+  if (!outputDirectory) return;
+
+  exportInProgress.value = true;
+  exportCompletedCount.value = 0;
+  exportTotalCount.value = images.value.length;
+  exportDirectory.value = outputDirectory;
+
   try {
-    const outputs = await api.exportImagesAsJpeg(images.value);
+    const outputs: string[] = [];
+    for (const inputPath of images.value) {
+      const output = await api.exportImageAsJpegToDirectory(inputPath, outputDirectory);
+      outputs.push(output);
+      exportCompletedCount.value += 1;
+    }
     queue.pushLog(`图片批量导出完成: ${outputs.length} 张`);
   } catch (error) {
     queue.pushLog(`图片导出失败: ${String(error)}`);
+  } finally {
+    exportInProgress.value = false;
   }
 };
 

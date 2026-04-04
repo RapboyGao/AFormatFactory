@@ -420,6 +420,11 @@ public final class ContentViewModel: ObservableObject {
     @Published var currentImage: NSImage?
     @Published var currentImagePixelSize: CGSize = .zero
     @Published var currentImageFileSizeBytes: Int64 = 0
+    @Published var imageCacheReadyCount = 0
+    @Published var imageExportInProgress = false
+    @Published var imageExportCompletedCount = 0
+    @Published var imageExportTotalCount = 0
+    @Published var imageExportLastOutputDirectory: URL?
     @Published var imageViewerZoom: Double = 1
     @Published var imageFullscreenPresented = false
     @Published var imageFullscreenZoom: Double = 1
